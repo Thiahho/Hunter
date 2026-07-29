@@ -3,9 +3,11 @@ using System.Text.Json.Serialization;
 using HealthChecks.UI.Client;
 using Hunter.Application;
 using Hunter.Infrastructure;
+using Hunter.Infrastructure.Persistence;
 using Hunter.Infrastructure.Security;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi;
 using Serilog;
@@ -85,6 +87,11 @@ try
         .AddNpgSql(connectionString, name: "postgresql");
 
     var app = builder.Build();
+
+    using (var scope = app.Services.CreateScope())
+    {
+        scope.ServiceProvider.GetRequiredService<HunterDbContext>().Database.Migrate();
+    }
 
     app.UseSerilogRequestLogging();
 
