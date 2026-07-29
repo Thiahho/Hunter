@@ -1,0 +1,33 @@
+# .NET build artifacts
+backend/**/bin/
+backend/**/obj/
+*.user
+
+# Local developer secrets (connection strings, JWT signing keys).
+# Commit the corresponding *.example file instead.
+backend/**/appsettings.Development.json
+backend/**/appsettings.Local.json
+backend/**/appsettings.*.local.json
+
+# Environment / secrets
+.env
+docker/.env
+
+# Frontend (when it exists)
+frontend/node_modules/
+frontend/dist/
+frontend/.env
+frontend/.env.local
+
+# IDE
+.vs/
+.vscode/
+*.DotSettings.user
+.idea/
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Logs
+*.log

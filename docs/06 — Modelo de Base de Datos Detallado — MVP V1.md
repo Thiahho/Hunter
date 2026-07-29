@@ -1,280 +1,388 @@
-📘 05 — Modelo de Dominio y Base de Datos — MVP V1
+📘 06 — Modelo de Base de Datos Detallado — MVP V1
 
 Producto: Hunter CRM AI
-Versión: 1.0
-Estado: Diseño inicial
-Objetivo: Definir las entidades, relaciones y reglas de negocio necesarias para implementar el MVP.
+Versión: 2.0
+Base de datos: PostgreSQL
+ORM: Entity Framework Core
+Arquitectura: Modular Monolith
+Multi-tenancy: Shared Database + OrganizationId
+
+0. Registro de cambios respecto a la v1.0
+
+La versión anterior de este documento era una copia literal del documento 05 (modelo conceptual), sin llegar a definir tablas físicas. Esta versión sí define la estructura física y, además, reconcilia el modelo con los documentos 17 a 23 (especificación funcional completa, modelo de datos V1, API REST, prospección, scoring y campañas), que ampliaron el dominio después de escrito el documento 05 sin que ese documento se actualizara.
+
+Decisiones de consolidación tomadas en esta versión:
+
+1. **Estados de `prospects` unificados.** Existían tres enumeraciones distintas entre los documentos 05, 17/18 y 23. Se adopta una única lista (sección 7.3), incorporando `NOT_INTERESTED` y `NO_RESPONSE` como estados terminales distintos — el documento 23 remarca explícitamente que "no responder" no equivale a "no interesado", y esa distinción se pierde si no hay un estado propio.
+2. **`HUMAN_HANDOFF` deja de ser un estado de `prospects`.** El traspaso a un vendedor ya queda representado por la existencia de un `Lead` en estado `NEW`; mantenerlo también como estado del prospecto duplicaba la misma señal en dos lugares.
+3. **`Interaction` (tabla genérica de timeline) se elimina.** Los documentos 17–19 introdujeron entidades específicas (`messages`, `message_responses`, `lead_activities`, `follow_ups`) que ya cubren cada tipo de evento con sus propios campos (clasificación IA, costo, etc.). Mantener además una tabla genérica de interacciones duplicaría el mismo hecho en dos tablas. El timeline de un prospecto o Lead se construye ahora como una consulta (UNION) sobre esas tablas específicas — ver sección 22.
+4. **`messages` se separa en `messages` (salientes) y `message_responses` (entrantes).** Cada dirección tiene columnas propias que no aplican a la otra (`cost`/`delivered_at` en salientes; `classification`/`confidence`/`ai_model` en entrantes). Iba mezclado en una sola tabla con `direction` en la v1.0; se adopta el modelo separado de los documentos 18/19 porque evita columnas nulas por diseño y refleja mejor cómo n8n y la IA consumen cada uno.
+5. **Se incorporan cinco tablas que no existían en la v1.0** pero son obligatorias según los documentos 13, 15, 18 y 19: `suppressions` (lista de exclusión / opt-out, sin la cual no se puede cumplir el checklist de seguridad del documento 13), `costs` (registro de costos por mensaje/IA/prospección, requerido por el documento 15 para calcular costo por Lead y por venta), `follow_ups`, `sales` e `import_batches` / `import_batch_records` (trazabilidad de importaciones masivas, documento 18).
+6. **`prospect_contacts` corrige una inconsistencia interna del documento original:** la sección de índices pedía `UNIQUE(organization_id, channel, value)`, pero la tabla nunca declaraba la columna `organization_id`. Se agrega esa columna (denormalizada desde `prospects`) para que el índice sea implementable.
+7. **Campos de segmentación y scoring** (`category`, `business_size`, `recurrence_potential`, `distance_category`, `data_quality`, `commercial_score`, `operational_priority`) se incorporan a `prospects` siguiendo los documentos 21 y 22, que no existían cuando se escribió la v1.0 de este documento.
+8. **`campaign_recipients.status`** se amplía para incluir `DELIVERED`, `INTERESTED`, `NOT_INTERESTED`, `STOPPED` y `SKIPPED`, siguiendo el documento 18 y el workflow de n8n del documento 20, que ya asumían estos valores aunque el documento 06 original no los tuviera.
+
+Ningún otro documento (07 a 23) necesita cambiar como consecuencia de esta actualización: los nombres de entidades y estados usados aquí ya son los que la mayoría de esos documentos daba por hecho.
 
 1. Objetivo
 
-Definir el modelo de dominio que representa el funcionamiento comercial de Hunter CRM AI durante la V1.
+Definir la estructura física de la base de datos del MVP V1.
 
-El modelo debe cubrir el flujo:
+El modelo debe permitir:
 
-ORGANIZACIÓN
-      ↓
-PROSPECTO
-      ↓
-CAMPAÑA
-      ↓
-CONTACTO
-      ↓
-RESPUESTA
-      ↓
-INTERÉS
-      ↓
-LEAD
-      ↓
-GESTIÓN HUMANA
-      ↓
-RESULTADO
+Gestionar múltiples organizaciones.
+Administrar usuarios.
+Almacenar y segmentar prospectos.
+Evitar duplicados.
+Importar prospectos en lote con trazabilidad por fila.
+Ejecutar campañas respetando límites de envío.
+Registrar mensajes salientes y respuestas entrantes.
+Clasificar interés mediante IA.
+Crear Leads y transferirlos a vendedores.
+Registrar actividades comerciales y seguimientos.
+Registrar ventas.
+Bloquear contactos que solicitaron no ser contactados (opt-out).
+Registrar costos por mensaje, IA y prospección.
+Auditar acciones importantes.
 
-El diseño debe ser:
+2. Convenciones
 
-Multiempresa.
-Modular.
-Extensible.
-Compatible con EF Core.
-Compatible con PostgreSQL.
-Preparado para futuras versiones.
-2. Principios del Modelo
-2.1 Multi-Tenant
+Identificadores
 
-Todas las entidades relacionadas con una empresa deberán estar aisladas mediante OrganizationId.
+Se utilizará:
 
-Organization A
-    │
-    ├── Prospects
-    ├── Campaigns
-    ├── Leads
-    └── Users
-
-Organization B
-    │
-    ├── Prospects
-    ├── Campaigns
-    ├── Leads
-    └── Users
-
-Nunca se deberá asumir que el sistema pertenece exclusivamente a Difrani.
-
-2.2 Separación Prospect / Lead
-
-Esta separación es fundamental.
-
-Prospect
-
-Es una empresa o contacto potencial descubierto por Hunter.
-
-Todavía no demostró interés.
-
-Lead
-
-Es un prospecto que realizó una acción que demuestra interés comercial y requiere intervención humana.
-
-Prospect
-   ↓
-Contacto
-   ↓
-Respuesta
-   ↓
-Interés
-   ↓
-Lead
-
-Un prospecto puede existir sin convertirse en Lead.
-
-3. Entidades Principales
-
-El MVP tendrá las siguientes entidades:
-
-Organization
-User
-Role
-Prospect
-ProspectContact
-ProspectSource
-ProspectTag
-Campaign
-CampaignRecipient
-Message
-MessageTemplate
-Lead
-Interaction
-LeadActivity
-Channel
-Tag
-OrganizationSettings
-AuditLog
-4. Organization
-
-Representa una empresa que utiliza Hunter.
+UUID
 
 Ejemplo:
 
-Difrani
+Id UUID PRIMARY KEY
 
-Pero el sistema también podrá tener:
+Motivos:
 
-Empresa A
-Empresa B
-Empresa C
-Campos principales
-Id
-Name
-LegalName
-TaxId
-Email
-Phone
-Country
-Timezone
-Status
-CreatedAt
-UpdatedAt
-Responsabilidad
+Evitar IDs secuenciales predecibles.
+Facilitar generación distribuida.
+Preparar futuras integraciones.
+Facilitar sincronización entre sistemas.
 
-Es la raíz del aislamiento multi-tenant.
+Fechas
 
-5. User
+Se utilizará:
 
-Representa un usuario de la plataforma.
+TIMESTAMPTZ
 
-Puede ser:
+Todas las fechas se almacenarán en UTC.
 
-Administrador.
-Vendedor.
-Supervisor.
-Campos
-Id
+La zona horaria se resolverá a nivel de organización.
+
+Nombres
+
+Las tablas utilizarán snake_case.
+
+Ejemplo:
+
+organizations
+prospects
+prospect_contacts
+campaign_recipients
+
+Las propiedades C# utilizarán PascalCase.
+
+Ejemplo:
+
 OrganizationId
-Name
-Email
-PasswordHash
-Status
 CreatedAt
 UpdatedAt
 
-Relación:
+Montos
 
-Organization
-    │
-    └── Users
-6. Role
+Los campos monetarios (`amount`, `cost`, `margin`) utilizarán:
 
-Define los permisos del usuario.
+NUMERIC(14,2)
 
-Roles iniciales:
+junto a una columna `currency` (VARCHAR(3), ISO 4217). Nunca se almacenarán montos en tipos de punto flotante.
+
+3. Tabla organizations
+
+Representa una empresa dentro de Hunter.
+
+organizations
+
+id
+name
+legal_name
+tax_id
+email
+phone
+address
+city
+province
+country
+timezone
+is_active
+created_at
+updated_at
+
+Restricciones
+PK:
+id
+
+UNIQUE parcial:
+tax_id WHERE tax_id IS NOT NULL
+
+El tax_id es nullable: Hunter podrá operar con organizaciones fuera de Argentina o sin CUIT cargado en el alta inicial.
+
+4. Tabla users
+
+users
+
+id
+organization_id
+first_name
+last_name
+email
+phone
+password_hash
+is_active
+created_at
+updated_at
+
+Relaciones
+users.organization_id
+        ↓
+organizations.id
+
+Índices
+UNIQUE:
+organization_id + email
+
+Esto permite que el mismo email pueda existir en diferentes organizaciones.
+
+5. Tabla roles
+
+roles
+
+id
+name
+
+Valores:
 
 OWNER
 ADMIN
 MANAGER
 SELLER
 
-Para el MVP no se requiere un sistema extremadamente complejo de permisos.
+6. Tabla user_roles
 
-Debe permitir:
+user_roles
 
-OWNER / ADMIN
-    ↓
-Configuración
-Usuarios
-Campañas
-Prospectos
-Leads
+user_id
+role_id
 
-SELLER
-    ↓
-Leads asignados
-Prospectos
-Conversaciones
-Seguimiento
-7. Prospect
+PK compuesta:
 
-Es la entidad central del Prospect Pool.
+user_id
+role_id
 
-Representa una oportunidad comercial potencial.
+Esto permite que un usuario pueda tener más de un rol.
 
-Campos
-Id
-OrganizationId
+7. Tabla prospects
 
-BusinessName
-BusinessType
+Esta será la tabla más importante del sistema.
 
-Address
-City
-State
-Country
-PostalCode
+prospects
 
-Website
+id
+organization_id
 
-Status
+business_name
+contact_name
 
-Score
+category
+business_size
+recurrence_potential
+distance_category
+data_quality
 
-CreatedAt
-UpdatedAt
-LastContactedAt
-Estado
-DISCOVERED
+address
+city
+province
+country
+postal_code
+
+latitude
+longitude
+
+website
+
+commercial_score
+operational_priority
+
+status
+
+is_deleted
+deleted_at
+
+created_at
+updated_at
+last_contacted_at
+
+7.1 category
+
+Reemplaza a `business_type` de la v1.0 para alinear con los documentos 17/18/21, que usan `category` de forma consistente.
+
+DISTRIBUTOR
+AUTO_PARTS_STORE
+WORKSHOP
+LUBRICENTRO
+TIRE_SHOP
+RESELLER
+OTHER
+UNKNOWN
+
+7.2 business_size / recurrence_potential / distance_category / data_quality
+
+business_size:
+UNKNOWN, MICRO, SMALL, MEDIUM, LARGE
+
+recurrence_potential:
+UNKNOWN, LOW, MEDIUM, HIGH
+
+distance_category:
+UNKNOWN, LOCAL, NEAR, MEDIUM, FAR
+
+data_quality:
+A, B, C, D
+
+Ninguno de estos campos debe usarse para descartar automáticamente un prospecto (documentos 21/22): son variables de segmentación y de scoring, no de exclusión.
+
+7.3 status (unificado)
+
+NEW
 VALIDATED
 READY
 CONTACTED
 RESPONDED
-INTERESTED
-CONVERTED
-LOST
+NOT_INTERESTED
+NO_RESPONSE
+LEAD
+CUSTOMER
+SUPPRESSED
+INVALID
 
-La V1 puede comenzar con un conjunto reducido:
+Notas:
 
-DISCOVERED
-READY
-CONTACTED
-RESPONDED
-INTERESTED
-CONVERTED
-LOST
-8. ProspectContact
+`NOT_INTERESTED` y `NO_RESPONSE` son estados terminales distintos: el primero es una respuesta explícita negativa; el segundo es ausencia de respuesta tras los seguimientos definidos en el documento 23. No deben tratarse como equivalentes en reportes.
 
-Un prospecto puede tener múltiples formas de contacto.
+`LEAD` indica que existe un registro en `leads` asociado; no hay un estado `INTERESTED` ni `HUMAN_HANDOFF` propios en `prospects` — esa señal vive en `leads.status` y en `message_responses.classification`.
 
-Por eso no recomiendo guardar todo directamente en Prospect.
+`SUPPRESSED` se aplica automáticamente cuando el contacto aparece en `suppressions` (sección 18), incluso si el prospecto reingresa por una fuente externa.
+
+7.4 commercial_score / operational_priority
+
+commercial_score: INTEGER (0-100), calculado según el documento 22 (tipo de cliente, recurrencia, contactabilidad, calidad del dato, tamaño, distancia).
+
+operational_priority: PRIORITY_A, PRIORITY_B, PRIORITY_C, PRIORITY_D — deriva de `commercial_score` pero se almacena aparte porque puede recalcularse con reglas distintas por campaña (documento 22, sección 39).
+
+8. Índices de prospects
+
+INDEX:
+organization_id
+
+INDEX:
+organization_id + status
+
+INDEX:
+organization_id + city
+
+INDEX:
+organization_id + category
+
+INDEX:
+organization_id + operational_priority
+
+INDEX:
+organization_id + commercial_score
+
+Estos índices permiten consultas como:
+
+Prospectos de Buenos Aires.
+Prospectos listos para contactar.
+Prospectos de tipo distribuidora.
+Prospectos de prioridad A pendientes de campaña.
+
+9. Tabla prospect_contacts
+
+prospect_contacts
+
+id
+organization_id
+prospect_id
+
+channel
+value
+
+is_primary
+is_verified
+is_active
+
+created_at
+updated_at
+
+`organization_id` se agrega en esta versión (denormalizado desde `prospects`) para poder implementar el índice único de deduplicación de la sección 10 sin necesidad de un JOIN.
 
 Ejemplo:
 
 Prospect
-   │
-   ├── WhatsApp
-   ├── Teléfono
-   ├── Email
-   └── Instagram
-Campos
-Id
-ProspectId
+    │
+    ├── WHATSAPP
+    │   +5491112345678
+    │
+    ├── PHONE
+    │   +541112345678
+    │
+    └── EMAIL
+        ventas@empresa.com
 
-Channel
-Value
+10. Índices de deduplicación
 
-IsPrimary
-IsVerified
-IsActive
+La prioridad será:
 
-CreatedAt
-UpdatedAt
+organization_id
++
+channel
++
+value
 
-Ejemplo:
+Índice único:
 
-WhatsApp
-+5491122334455
+UNIQUE (
+    organization_id,
+    channel,
+    value
+)
 
-Esto permitirá posteriormente agregar nuevos canales sin modificar Prospect.
+Esto evita que una organización tenga dos prospectos con el mismo contacto.
 
-9. ProspectSource
+Esta regla debe revisarse cuando un mismo teléfono pueda pertenecer legítimamente a una empresa y a una sucursal (ver documento 06 sección 32 sobre sucursales, fuera de alcance en V1).
 
-Indica de dónde provino el prospecto.
+11. Tabla prospect_sources
 
-Ejemplos:
+prospect_sources
+
+id
+organization_id
+prospect_id
+
+source_type
+external_id
+source_url
+collected_at
+
+created_at
+
+Se agrega `organization_id` (para filtrado multi-tenant directo) y `collected_at` (requerido por el documento 13, sección 20, para trazabilidad de origen y base legal del dato).
+
+Tipos (`source_type`):
 
 GOOGLE_PLACES
 OPEN_STREET_MAP
@@ -282,92 +390,154 @@ DIRECTORY
 PUBLIC_WEBSITE
 CSV_IMPORT
 MANUAL
-Campos
-Id
-ProspectId
+EXTERNAL_API
+OTHER
 
-SourceType
-ExternalId
-SourceUrl
+Índice:
 
-CreatedAt
+UNIQUE (
+    source_type,
+    external_id
+)
 
-Un prospecto puede tener varias fuentes.
+Cuando el proveedor entrega un identificador externo único.
 
-Ejemplo:
+12. Tabla import_batches
 
-Google Places
-+
-Web pública
-+
-Carga manual
+Representa una importación masiva (CSV/Excel/API). No existía en la v1.0; requerido por el documento 18 para poder mostrar el preview de importación (sección 11 del documento 17) antes de confirmar.
 
-Esto también ayuda a detectar duplicados.
+import_batches
 
-10. ProspectTag
+id
+organization_id
+file_name
+source_id
+total_records
+valid_records
+duplicate_records
+invalid_records
+suppressed_records
+status
+created_by
+created_at
+completed_at
 
-Permite clasificar prospectos.
+Estados (`status`):
 
-Ejemplo:
+PROCESSING
+PREVIEW
+CONFIRMED
+COMPLETED
+FAILED
+CANCELLED
 
-Taller
-Distribuidora
-Casa de Repuestos
-Mayorista
-Buenos Aires
-Alta Prioridad
+13. Tabla import_batch_records
 
-Relación:
+Permite auditar cada fila importada individualmente.
 
-Prospect
-    │
-    ├── Tag
-    ├── Tag
-    └── Tag
-11. Tag
+import_batch_records
 
-Entidad reutilizable.
+id
+import_batch_id
+row_number
+raw_data
+normalized_data
+status
+error_message
+prospect_id
+created_at
 
-Id
-OrganizationId
-Name
-Color
-CreatedAt
+`raw_data` y `normalized_data` se almacenan como JSONB.
 
-Ejemplo:
+Estados (`status`):
 
-TALLER
-DISTRIBUIDOR
-CASA_REPUESTOS
-ALTA_PRIORIDAD
-12. Campaign
+VALID
+DUPLICATE
+INVALID
+SUPPRESSED
+IMPORTED
 
-Representa una campaña de prospección.
+14. Tabla tags
 
-Ejemplo:
+tags
 
-Campaña:
-Distribuidores Buenos Aires
-Campos
-Id
-OrganizationId
+id
+organization_id
+name
+color
+created_at
 
-Name
-Description
+Restricción:
 
-Status
+UNIQUE (
+    organization_id,
+    name
+)
 
-Channel
+15. Tabla prospect_tags
 
-MessageTemplateId
+Relación muchos a muchos.
 
-StartedAt
-FinishedAt
+prospect_tags
 
-CreatedAt
-UpdatedAt
+prospect_id
+tag_id
 
-Estados:
+PK:
+
+prospect_id
+tag_id
+
+16. Tabla message_templates
+
+message_templates
+
+id
+organization_id
+name
+content
+channel
+version
+is_active
+created_by
+created_at
+updated_at
+
+Se agrega `version` (documento 18): cada edición relevante de una plantilla activa crea una nueva fila con la misma `organization_id + name` e incrementa `version`, en lugar de sobrescribir el contenido histórico usado por campañas ya enviadas.
+
+Variables soportadas en `content`:
+
+{{business_name}}
+{{city}}
+{{category}}
+{{sender_name}}
+
+La plantilla no debe contener lógica comercial; la resolución de variables ocurre en el sistema (n8n al momento de render, documento 20 sección 9).
+
+17. Tabla campaigns
+
+campaigns
+
+id
+organization_id
+name
+description
+status
+channel
+message_template_id
+max_messages
+messages_per_minute
+messages_per_hour
+messages_per_day
+start_date
+end_date
+created_by
+created_at
+updated_at
+
+Se agregan los límites de envío (`max_messages`, `messages_per_minute/hour/day`) requeridos por los documentos 18 y 19 para el control de velocidad y el Kill Switch por campaña.
+
+Estados (`status`):
 
 DRAFT
 READY
@@ -375,535 +545,710 @@ RUNNING
 PAUSED
 COMPLETED
 CANCELLED
-13. CampaignRecipient
 
-Representa la participación de un prospecto en una campaña específica.
+18. Tabla campaign_recipients
 
-Es necesaria porque un mismo prospecto puede participar en varias campañas.
+Entidad fundamental: representa la participación de un prospecto en una campaña.
 
-Prospect
-    │
-    ├── Campaign A
-    ├── Campaign B
-    └── Campaign C
-Campos
-Id
-CampaignId
-ProspectId
+campaign_recipients
 
-Status
+id
+campaign_id
+prospect_id
+status
+attempts
+last_attempt_at
+first_message_id
+last_message_id
+created_at
+updated_at
 
-SentAt
-RespondedAt
+Restricción:
 
-CreatedAt
-UpdatedAt
+UNIQUE (
+    campaign_id,
+    prospect_id
+)
 
-Estados:
+Esto evita agregar dos veces el mismo prospecto a una misma campaña.
+
+18.1 status (unificado)
+
+PENDING
+QUEUED
+SENT
+DELIVERED
+RESPONDED
+INTERESTED
+NOT_INTERESTED
+STOPPED
+SKIPPED
+FAILED
+COMPLETED
+
+Esta lista amplía la de la v1.0 (que solo tenía `PENDING, SENT, DELIVERED, RESPONDED, FAILED, SKIPPED`) para alinear con el workflow de n8n del documento 20 (que ya distingue `QUEUED` de `PENDING`) y con la clasificación de IA del documento 18 (`INTERESTED`/`NOT_INTERESTED`/`STOPPED` a nivel de destinatario, no solo de prospecto).
+
+19. Tabla messages (salientes)
+
+Representa cada mensaje enviado por el sistema.
+
+messages
+
+id
+organization_id
+prospect_id
+campaign_id
+campaign_recipient_id
+template_id
+channel
+provider
+content
+external_message_id
+status
+sent_at
+delivered_at
+read_at
+failed_at
+cost
+currency
+created_at
+
+Estados (`status`):
 
 PENDING
 SENT
 DELIVERED
-RESPONDED
+READ
 FAILED
-SKIPPED
-14. Message
+CANCELLED
 
-Representa un mensaje enviado o recibido.
+20. Índices de messages
 
-Campos
-Id
+INDEX:
+organization_id + prospect_id
 
-OrganizationId
-ProspectId
-CampaignId
-CampaignRecipientId
+INDEX:
+campaign_id
 
-Channel
+INDEX:
+UNIQUE external_message_id (cuando no sea null)
 
-Direction
+INDEX:
+created_at
 
-Content
+Esto permite reconstruir conversaciones, calcular costos por campaña y garantizar idempotencia frente a webhooks duplicados de confirmación de entrega.
 
-ExternalMessageId
+21. Tabla message_responses (entrantes)
 
-Status
+Representa cada respuesta recibida de un prospecto. Se separa de `messages` porque necesita columnas propias de clasificación por IA que no tienen sentido en un mensaje saliente.
 
-SentAt
-ReceivedAt
-CreatedAt
+message_responses
 
-Dirección:
+id
+organization_id
+prospect_id
+campaign_id
+message_id
+content
+received_at
+classification
+confidence
+ai_model
+ai_prompt_version
+processed_at
 
-OUTBOUND
-INBOUND
+`message_id` referencia el mensaje saliente al que responde, cuando puede determinarse.
 
-Esto permite registrar:
+`ai_model` y `ai_prompt_version` se agregan siguiendo el documento 18 (sección 27) para poder auditar qué modelo y qué versión de prompt generó cada clasificación.
 
-Bot → Prospecto
+21.1 classification
 
-Prospecto → Bot
+INTERESTED
+NOT_INTERESTED
+QUESTION
+UNCLEAR
+STOP
 
-Vendedor → Prospecto
+21.2 Regla de confianza
 
-Prospecto → Vendedor
-15. MessageTemplate
+Se fija un único umbral para todo el sistema, resolviendo la discrepancia entre el documento 08/10/20 (`>= 0.80`) y el documento 13 (`>= 0.85`):
 
-Plantillas reutilizables.
+Confidence >= 0.80
+    ↓
+Clasificación se aplica automáticamente
 
-Ejemplo:
+Confidence < 0.80
+    ↓
+classification = UNCLEAR
+    ↓
+Revisión humana
 
-Hola, ¿cómo va?
+22. Índices de message_responses
 
-Somos [EMPRESA].
-Estamos buscando ampliar nuestra red comercial.
+INDEX:
+organization_id + prospect_id
 
-¿Trabajan con distribución de repuestos?
-Campos
-Id
-OrganizationId
+INDEX:
+campaign_id
 
-Name
-Content
+INDEX:
+classification
 
-Channel
+23. Timeline (vista, no tabla física)
 
-IsActive
+La v1.0 de este documento definía una tabla genérica `interactions` para reconstruir la línea de tiempo de un prospecto. Esta versión la elimina como tabla y la reemplaza por una consulta (vista o UNION en la capa de Application) sobre las tablas específicas, evitando duplicar el mismo evento en dos lugares:
 
-CreatedAt
-UpdatedAt
+messages            (mensajes enviados)
+    UNION ALL
+message_responses   (respuestas recibidas, con clasificación)
+    UNION ALL
+lead_activities      (acciones humanas sobre un Lead)
+    UNION ALL
+follow_ups           (seguimientos programados/completados)
+    UNION ALL
+audit_logs           (cambios de estado relevantes, cuando corresponda)
 
-La V1 utilizará mensajes simples.
+ORDER BY created_at
 
-Posteriormente podremos agregar variables:
+Cada fuente ya tiene su propio timestamp y su propio tipo; la vista solo necesita proyectar un `event_type`, `occurred_at` y una referencia al `prospect_id` / `lead_id`.
 
-{{business_name}}
-
-{{city}}
-
-{{seller_name}}
-16. Interaction
-
-Representa una interacción comercial.
-
-Puede ser:
-
-Mensaje
-Respuesta
-Cambio de estado
-Nota
-Llamada
-Campos
-Id
-OrganizationId
-ProspectId
-LeadId
-
-Type
-
-Description
-
-CreatedByUserId
-
-CreatedAt
-
-Esto permite construir una línea de tiempo.
-
-10:00
-Prospecto descubierto
-
-10:05
-Mensaje enviado
-
-10:15
-Respuesta recibida
-
-10:16
-IA detecta interés
-
-10:16
-Lead creado
-
-10:20
-Vendedor toma el lead
-17. Lead
+24. Tabla leads
 
 Representa una oportunidad comercial que requiere intervención humana.
 
-Campos
-Id
+leads
 
-OrganizationId
-ProspectId
+id
+organization_id
+prospect_id
+campaign_id
+assigned_to_user_id
+status
+priority
+lost_reason
+created_at
+updated_at
+first_response_at
+last_activity_at
+closed_at
 
-AssignedToUserId
-
-Status
-
-SourceCampaignId
-
-CreatedAt
-UpdatedAt
-
-FirstContactAt
-LastInteractionAt
-ClosedAt
-
-Estados:
-
-NEW
-ASSIGNED
-IN_PROGRESS
-QUALIFIED
-QUOTED
-WON
-LOST
-
-Para el MVP podemos comenzar con:
+24.1 status
 
 NEW
 IN_PROGRESS
 WON
 LOST
-18. LeadActivity
 
-Registra las acciones realizadas por el vendedor.
+24.2 priority
 
-Ejemplos:
+HIGH
+MEDIUM
+LOW
 
-Llamada
-Mensaje
-Cotización
-Seguimiento
-Nota
-Campos
-Id
-LeadId
-UserId
+24.3 lost_reason (solo si status = LOST)
 
-Type
-Description
+PRICE
+NO_STOCK
+EXISTING_SUPPLIER
+NO_RESPONSE
+NOT_INTERESTED
+LOGISTICS
+COMMERCIAL_CONDITIONS
+OTHER
 
-CreatedAt
+25. Índices de leads
 
-Esto permitirá conocer qué ocurrió después de que la IA entregó el lead al humano.
+INDEX:
+organization_id + status
 
-19. Channel
+INDEX:
+organization_id + assigned_to_user_id
 
-Representa el canal de comunicación.
+INDEX:
+organization_id + created_at
 
-Inicialmente:
+26. Tabla lead_activities
 
+Registra las acciones realizadas por el vendedor sobre un Lead.
+
+lead_activities
+
+id
+lead_id
+user_id
+type
+description
+created_at
+
+Tipos (`type`):
+
+CONTACT
+CALL
 WHATSAPP
+QUOTE
+NOTE
+FOLLOW_UP
 
-Posteriormente:
+27. Tabla follow_ups
 
+Representa una tarea de seguimiento futura sobre un Lead. No existía en la v1.0; requerida por los documentos 14, 17 y 18.
+
+follow_ups
+
+id
+lead_id
+user_id
+scheduled_at
+status
+notes
+completed_at
+created_at
+
+Estados (`status`):
+
+PENDING
+COMPLETED
+CANCELLED
+
+28. Tabla sales
+
+Representa una venta cerrada. No existía en la v1.0; requerida por los documentos 14, 15, 17, 18 y 23 para poder calcular costo por venta, ticket promedio y ROI.
+
+sales
+
+id
+organization_id
+lead_id
+campaign_id
+prospect_id
+seller_id
+amount
+currency
+margin
+product_category
+status
+date
+created_at
+
+Estados (`status`):
+
+WON
+CANCELLED
+
+Se agrega `status` propio (además de `leads.status = WON`) para poder representar una venta que fue ganada y luego cancelada sin perder el registro histórico del Lead.
+
+29. Tabla suppressions
+
+Lista global de exclusión / opt-out. No existía en la v1.0 pese a ser un requisito no negociable del documento 13 ("ningún contacto que pida no ser contactado debe volver a serlo") y estar completamente especificada en los documentos 17, 18 y 19.
+
+suppressions
+
+id
+organization_id
+contact
+contact_type
+reason
+source
+created_at
+
+Restricción:
+
+UNIQUE (
+    organization_id,
+    contact
+)
+
+29.1 contact_type
+
+PHONE
+WHATSAPP
 EMAIL
-TELEGRAM
-SMS
-INSTAGRAM
-FACEBOOK
 
-El canal debe ser una abstracción del sistema.
+29.2 reason
 
-Esto permitirá cambiar proveedores sin modificar el dominio.
+USER_REQUESTED
+INVALID_NUMBER
+BLOCKED
+MANUAL
+OTHER
 
-20. OrganizationSettings
+29.3 Regla de uso
+
+Antes de cualquier envío (creación de `campaign_recipients` y antes de cada intento de `messages`), debe verificarse:
+
+prospect_contacts.value
+    ↓
+EXISTS IN suppressions (organization_id, contact)?
+    │
+   SI → no crear/enviar, campaign_recipients.status = STOPPED
+   NO → continuar
+
+30. Tabla costs
+
+Registra los costos generados por el sistema (mensajería, IA, prospección, infraestructura). No existía en la v1.0; es un requisito explícito del documento 12 (sección 29, "Punto Crítico": Hunter debe incorporar Cost Tracking desde el día 1) y del documento 15.
+
+costs
+
+id
+organization_id
+campaign_id
+type
+provider
+reference_id
+amount
+currency
+date
+created_at
+
+30.1 type
+
+MESSAGING
+AI
+PROSPECTING
+INFRASTRUCTURE
+OTHER
+
+31. Tabla organization_settings
 
 Configuraciones específicas de cada empresa.
 
-Ejemplos:
+organization_settings
 
-Nombre comercial
-Mensaje inicial
-Horarios de contacto
-Canales habilitados
-Configuración de IA
-Reglas de campañas
-Campos
-Id
-OrganizationId
+id
+organization_id
+key
+value
+created_at
+updated_at
 
-Key
-Value
+Restricción:
 
-CreatedAt
-UpdatedAt
+UNIQUE (
+    organization_id,
+    key
+)
 
-Para configuraciones más complejas, posteriormente podemos utilizar JSONB en PostgreSQL.
+Para configuraciones estructuradas se recomienda almacenar `value` como JSONB en lugar de forzar todo a texto plano.
 
-21. AuditLog
+32. Tabla audit_logs
 
 Registra acciones importantes.
 
-Ejemplos:
+audit_logs
 
-Prospecto creado
-Prospecto modificado
-Lead asignado
-Campaña iniciada
-Campaña pausada
-Usuario creado
-Campos
-Id
+id
+organization_id
+user_id
+entity_type
+entity_id
+action
+old_value
+new_value
+ip_address
+user_agent
+created_at
+
+`old_value` y `new_value` se almacenan como JSONB. Se agregan `ip_address` y `user_agent`, requeridos por el checklist de seguridad del documento 13.
+
+33. Enums
+
+Se mantiene la recomendación de la v1.0: los estados se manejan como enums de aplicación en C# y se almacenan como `VARCHAR` en PostgreSQL (no como enum nativo), para no requerir una migración de esquema cada vez que se agregue un valor.
+
+Ejemplo:
+
+public enum ProspectStatus
+{
+    New,
+    Validated,
+    Ready,
+    Contacted,
+    Responded,
+    NotInterested,
+    NoResponse,
+    Lead,
+    Customer,
+    Suppressed,
+    Invalid
+}
+
+34. Diagrama ER simplificado
+
+┌─────────────────┐
+│ organizations   │
+└────────┬────────┘
+         │
+         ├───────────────────────────┐
+         │                           │
+         ▼                           ▼
+┌──────────────┐             ┌─────────────┐
+│ prospects    │             │ users       │
+└──────┬───────┘             └─────────────┘
+       │
+       ├───────────────┬───────────────┐
+       │               │               │
+       ▼               ▼               ▼
+┌──────────────┐ ┌───────────────┐ ┌──────────────┐
+│ contacts     │ │ sources       │ │ suppressions │
+└──────────────┘ └───────────────┘ └──────────────┘
+       │
+       ▼
+┌──────────────┐
+│ campaigns    │
+└──────┬───────┘
+       │
+       ▼
+┌─────────────────────┐
+│ campaign_recipients │
+└──────────┬──────────┘
+           │
+           ├─────────────────┐
+           ▼                 ▼
+      ┌──────────┐   ┌──────────────────┐
+      │ messages │   │ message_responses│
+      └────┬─────┘   └─────────┬────────┘
+           │                   │
+           └─────────┬─────────┘
+                     ▼
+                 ┌────────┐
+                 │ leads  │
+                 └───┬────┘
+                     │
+          ┌──────────┼──────────┐
+          ▼          ▼          ▼
+┌─────────────┐ ┌──────────┐ ┌───────┐
+│lead_activities│ │follow_ups│ │ sales │
+└─────────────┘ └──────────┘ └───────┘
+
+Costos (`costs`) y auditoría (`audit_logs`) se relacionan transversalmente con `organizations` y, opcionalmente, con `campaigns`; no se representan en el diagrama para no sobrecargarlo.
+
+35. Flujo de persistencia
+
+El flujo recomendado será:
+
+Google Places / Fuente
+        │
+        ▼
+       n8n
+        │
+        ▼
+POST /api/imports  (o /api/prospects)
+        │
+        ▼
+ProspectService
+        │
+        ├── Validar
+        ├── Normalizar
+        ├── Deduplicar (prospect_contacts UNIQUE)
+        ├── Segmentar y puntuar (commercial_score / operational_priority)
+        │
+        ▼
+PostgreSQL
+
+Para campañas:
+
+Campaign
+    │
+    ▼
+CampaignRecipient
+    │
+    ▼
+Message
+    │
+    ▼
+External Provider
+
+Para respuestas:
+
+External Provider
+        │
+        ▼
+Webhook
+        │
+        ▼
+n8n
+        │
+        ▼
+ASP.NET API
+        │
+        ├── Guardar MessageResponse
+        ├── Clasificar con IA
+        ├── Actualizar CampaignRecipient
+        │
+        ▼
+¿INTERESTED?
+        │
+   ┌────┴────┐
+   SI         NO
+   │           │
+   ▼           ▼
+ Lead     NOT_INTERESTED / UNCLEAR
+
+36. Índices críticos del MVP
+
+Los índices prioritarios serán:
+
+prospects
+├── organization_id
+├── organization_id + status
+├── organization_id + city
+├── organization_id + category
+└── organization_id + operational_priority
+
+prospect_contacts
+└── UNIQUE organization_id + channel + value
+
+campaign_recipients
+└── UNIQUE campaign_id + prospect_id
+
+messages
+├── organization_id + prospect_id
+└── UNIQUE external_message_id (parcial, WHERE NOT NULL)
+
+message_responses
+├── organization_id + prospect_id
+└── classification
+
+leads
+├── organization_id + status
+└── organization_id + assigned_to_user_id
+
+suppressions
+└── UNIQUE organization_id + contact
+
+No se deben crear índices indiscriminadamente. Cada índice tiene un costo de almacenamiento y de escritura.
+
+37. Estrategia Multi-Tenant
+
+Todas las consultas tenant-aware deberán filtrar automáticamente por:
+
 OrganizationId
 
-UserId
+Ejemplo conceptual:
 
-EntityType
-EntityId
+modelBuilder.Entity<Prospect>()
+    .HasQueryFilter(x =>
+        x.OrganizationId == _currentOrganization.Id);
 
-Action
+El mismo filtro global debe aplicarse a `prospect_contacts`, `campaign_recipients` (vía join con `campaigns`/`prospects`), `messages`, `message_responses`, `leads`, `suppressions` y `costs`.
 
-OldValue
-NewValue
+El `OrganizationId` nunca deberá confiar únicamente en un valor enviado por el frontend. Debe derivarse del contexto autenticado (documento 19, sección 50).
 
-CreatedAt
-22. Relaciones
+38. Estrategia de eliminación
 
-El modelo general:
+No se recomienda eliminar físicamente:
+
+Prospects.
+Leads.
+Campaigns.
+Messages / MessageResponses.
+Sales.
+AuditLogs.
+
+Para las entidades de negocio (`Prospect`, `Campaign`, `Lead`, `MessageTemplate`) se utilizará:
+
+IsDeleted
+DeletedAt
+
+Las entidades históricas (`Message`, `MessageResponse`, `Sale`, `AuditLog`) no deberían eliminarse nunca; son esencialmente inmutables una vez creadas.
+
+39. Decisión sobre Prospect y Customer
+
+Para el MVP no se crea una entidad `Customer` independiente. El resultado comercial se maneja mediante `leads.status = WON` y el registro correspondiente en `sales`.
+
+En una versión posterior:
+
+Prospect
+    ↓
+Lead
+    ↓
+Customer
+
+La entidad `Customer` podrá incorporar historial de compras, frecuencia, ticket promedio, última compra, recompra y condiciones comerciales (documento 15, sección 34-35). No forma parte de la V1.
+
+40. Decisión sobre sucursales
+
+Para el MVP, una empresa se trata como un único prospecto. En una versión posterior:
 
 Organization
-│
-├── Users
-│
-├── Settings
-│
-├── Tags
-│
-├── Prospects
-│   │
-│   ├── Contacts
-│   ├── Sources
-│   ├── Tags
-│   └── Interactions
-│
-├── Campaigns
-│   │
-│   ├── Recipients
-│   │      │
-│   │      └── Messages
-│   │
-│   └── Templates
-│
-├── Leads
-│   │
-│   ├── Activities
-│   └── Interactions
-│
-└── AuditLogs
-23. Flujo de Datos
-                    SOURCE
-                      │
-                      ▼
-                 Prospect
-                      │
-                      ▼
-               VALIDATION
-                      │
-                      ▼
-                   READY
-                      │
-                      ▼
-                  CAMPAIGN
-                      │
-                      ▼
-             CampaignRecipient
-                      │
-                      ▼
-                 Message
-                      │
-                      ▼
-                 Response
-                      │
-                      ▼
-              Interest Detector
-                      │
-                      ▼
-                    Lead
-                      │
-                      ▼
-                Human Handoff
-                      │
-                      ▼
-                 LeadActivity
-                      │
-                      ▼
-                  WON / LOST
-24. Reglas de Negocio
-Regla 1
+    │
+    └── Business
+            │
+            ├── Branch
+            ├── Branch
+            └── Branch
 
-Un prospecto pertenece a una única organización.
+No se implementa inicialmente. Esto es relevante para el índice único de `prospect_contacts` (sección 10): un mismo teléfono compartido entre casa central y sucursal generará, por ahora, un conflicto que deberá resolverse manualmente.
 
-Regla 2
+41. Decisión sobre contactos
 
-Un prospecto puede tener múltiples contactos.
+El modelo permite múltiples contactos por prospecto (`prospect_contacts`).
 
-Regla 3
+En V1 solo es necesario:
 
-Un prospecto puede participar en múltiples campañas.
+channel
+value
+is_primary
 
-Regla 4
+Posteriormente se podrán agregar:
 
-Un prospecto no debe duplicarse dentro de una organización.
+contact_name
+contact_role
+department
 
-Regla 5
+42. Estado final del modelo V1
 
-Un Lead siempre debe estar relacionado con un Prospect.
+CORE
+├── organizations
+├── users
+├── roles
+└── user_roles
 
-Regla 6
+PROSPECTING
+├── prospects
+├── prospect_contacts
+├── prospect_sources
+├── import_batches
+├── import_batch_records
+├── tags
+└── prospect_tags
 
-Un Lead debe pertenecer a la misma organización que su Prospect.
+CAMPAIGNS
+├── message_templates
+├── campaigns
+└── campaign_recipients
 
-Regla 7
+MESSAGING
+├── messages
+└── message_responses
 
-Un mensaje debe estar asociado a una organización.
+CRM
+├── leads
+├── lead_activities
+└── follow_ups
 
-Regla 8
+SALES
+└── sales
 
-Las campañas no pueden utilizar prospectos de otra organización.
+COMPLIANCE
+└── suppressions
 
-Regla 9
+FINANCE
+└── costs
 
-Toda modificación crítica debe generar auditoría.
+SYSTEM
+├── organization_settings
+└── audit_logs
 
-25. Deduplicación
+43. Próximo paso
 
-La deduplicación será uno de los componentes más importantes del Prospect Factory.
+Con este modelo consolidado, el orden de implementación recomendado (documento 18, sección 52, sin cambios) sigue siendo:
 
-La coincidencia podrá evaluarse mediante:
+FASE 1 → organizations, users, roles, user_roles
+FASE 2 → prospects, prospect_sources, import_batches, import_batch_records
+FASE 3 → campaigns, campaign_recipients, message_templates
+FASE 4 → messages, message_responses
+FASE 5 → leads, lead_activities, follow_ups
+FASE 6 → sales
+FASE 7 → suppressions, costs, audit_logs
 
-1. Teléfono
-2. WhatsApp
-3. ExternalId
-4. Sitio web
-5. Nombre + dirección
-6. Nombre + ciudad
-
-Ejemplo:
-
-Google Places
-
-Repuestos López
-Av. Siempre Viva 123
-
-+
-
-Web
-
-Repuestos López
-Av. Siempre Viva 123
-
-↓
-
-Mismo Prospect
-
-No se crearán dos registros.
-
-26. Multi-Tenancy
-
-La V1 utilizará un modelo:
-
-Shared Database + OrganizationId
-
-Ejemplo:
-
-Prospects
-
-Id | OrganizationId | Name
---------------------------------
-1  | ORG-A          | Empresa A
-2  | ORG-A          | Empresa B
-3  | ORG-B          | Empresa C
-
-EF Core utilizará filtros globales para garantizar aislamiento.
-
-OrganizationId
-
-Será obligatorio en las entidades tenant-aware.
-
-27. Preparación para V2
-
-El modelo debe poder evolucionar hacia:
-
-AIConversation
-AIMessage
-LeadScore
-ScoreFactor
-AutomationRule
-FollowUp
-Integration
-Provider
-
-Estas entidades no forman parte del MVP inicial.
-
-28. Modelo conceptual final
-                    ORGANIZATION
-                         │
-        ┌────────────────┼────────────────┐
-        │                │                │
-        ▼                ▼                ▼
-     PROSPECT          CAMPAIGN          USER
-        │                │
-        │                ▼
-        │         CAMPAIGN RECIPIENT
-        │                │
-        │                ▼
-        │             MESSAGE
-        │
-        ├── CONTACT
-        ├── SOURCE
-        ├── TAG
-        └── INTERACTION
-                 │
-                 ▼
-                LEAD
-                 │
-                 ▼
-           LEAD ACTIVITY
-29. Decisión técnica recomendada
-
-Para la V1 recomiendo no crear microservicios ni separar bases de datos por organización.
-
-La arquitectura será:
-
-ASP.NET Core
-      │
-      ▼
-Modular Monolith
-      │
-      ▼
-PostgreSQL
-      │
-      ▼
-OrganizationId
-      │
-      ▼
-EF Core Global Query Filters
-
-Esto mantiene el desarrollo simple y permite escalar posteriormente.
-
-30. Próximo documento
-
-Con este modelo ya podemos pasar al documento:
-
-06 — Modelo de Base de Datos Detallado
-
-Ahí definiremos concretamente:
-
-Tablas PostgreSQL.
-Columnas.
-Tipos de datos.
-PK.
-FK.
-Índices.
-Unique Constraints.
-UUID vs BIGINT.
-JSONB.
-Enums.
-Relaciones.
-Índices para búsquedas.
-Índices para deduplicación.
-Estrategia de auditoría.
-Configuración de EF Core.
-Convenciones de nombres.
+La primera migración de EF Core debería contener únicamente las tablas de FASE 1 y FASE 2, siguiendo la misma lógica incremental que el resto del backlog técnico (documento 07).

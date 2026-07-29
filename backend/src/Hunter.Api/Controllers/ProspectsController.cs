@@ -1,0 +1,93 @@
+using Hunter.Application.Prospecting;
+using Hunter.Application.Prospecting.Contracts;
+using Hunter.Domain.Prospecting;
+using Hunter.Shared;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+
+namespace Hunter.Api.Controllers;
+
+[ApiController]
+[Authorize]
+[Route("api/v1/prospects")]
+public class ProspectsController(IProspectService prospectService) : ControllerBase
+{
+    [HttpGet]
+    public async Task<IActionResult> Search(
+        [FromQuery] string? search,
+        [FromQuery] ProspectCategory? category,
+        [FromQuery] string? city,
+        [FromQuery] string? province,
+        [FromQuery] ProspectStatus? status,
+        [FromQuery] string? tag,
+        [FromQuery] ProspectSourceType? source,
+        [FromQuery] BusinessSize? businessSize,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 50,
+        CancellationToken ct = default)
+    {
+        var query = new ProspectQuery(search, category, city, province, status, tag, source, businessSize, page, pageSize);
+        var result = await prospectService.SearchAsync(query, ct);
+        return Ok(ApiResponse<PagedResult<ProspectListItemDto>>.Ok(result));
+    }
+
+    [HttpGet("{id:int}")]
+    public async Task<IActionResult> GetById(int id, CancellationToken ct)
+    {
+        var result = await prospectService.GetByIdAsync(id, ct);
+        if (!result.Succeeded)
+            return NotFound(ApiResponse<ProspectDto>.Fail(result.Error!));
+
+        return Ok(ApiResponse<ProspectDto>.Ok(result.Value!));
+    }
+
+    [HttpPost]
+    public async Task<IActionResult> Create(CreateProspectRequest request, CancellationToken ct)
+    {
+        var result = await prospectService.CreateAsync(request, ct);
+        if (!result.Succeeded)
+            return Conflict(ApiResponse<ProspectDto>.Fail(result.Error!));
+
+        return Ok(ApiResponse<ProspectDto>.Ok(result.Value!));
+    }
+
+    [HttpPut("{id:int}")]
+    public async Task<IActionResult> Update(int id, UpdateProspectRequest request, CancellationToken ct)
+    {
+        var result = await prospectService.UpdateAsync(id, request, ct);
+        if (!result.Succeeded)
+            return NotFound(ApiResponse<ProspectDto>.Fail(result.Error!));
+
+        return Ok(ApiResponse<ProspectDto>.Ok(result.Value!));
+    }
+
+    [HttpDelete("{id:int}")]
+    public async Task<IActionResult> Delete(int id, CancellationToken ct)
+    {
+        var result = await prospectService.DeleteAsync(id, ct);
+        if (!result.Succeeded)
+            return NotFound(ApiResponse<bool>.Fail(result.Error!));
+
+        return Ok(ApiResponse<bool>.Ok(true));
+    }
+
+    [HttpPost("{id:int}/tags")]
+    public async Task<IActionResult> AddTag(int id, [FromBody] string tagName, CancellationToken ct)
+    {
+        var result = await prospectService.AddTagAsync(id, tagName, ct);
+        if (!result.Succeeded)
+            return NotFound(ApiResponse<bool>.Fail(result.Error!));
+
+        return Ok(ApiResponse<bool>.Ok(true));
+    }
+
+    [HttpDelete("{id:int}/tags/{tagId:int}")]
+    public async Task<IActionResult> RemoveTag(int id, int tagId, CancellationToken ct)
+    {
+        var result = await prospectService.RemoveTagAsync(id, tagId, ct);
+        if (!result.Succeeded)
+            return NotFound(ApiResponse<bool>.Fail(result.Error!));
+
+        return Ok(ApiResponse<bool>.Ok(true));
+    }
+}

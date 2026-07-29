@@ -1,0 +1,15 @@
+using Hunter.Application.Auth;
+using Hunter.Domain.Identity;
+using Microsoft.AspNetCore.Identity;
+
+namespace Hunter.Infrastructure.Security;
+
+public class PasswordHasherAdapter : IPasswordHasher
+{
+    private readonly PasswordHasher<User> _hasher = new();
+
+    public string Hash(User user, string password) => _hasher.HashPassword(user, password);
+
+    public bool Verify(User user, string hash, string password) =>
+        _hasher.VerifyHashedPassword(user, hash, password) != PasswordVerificationResult.Failed;
+}

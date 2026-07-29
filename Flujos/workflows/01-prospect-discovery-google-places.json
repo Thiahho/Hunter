@@ -1,0 +1,240 @@
+{
+  "name": "01 - Prospect Discovery (Google Places)",
+  "nodes": [
+    {
+      "id": "trigger-manual",
+      "name": "Ejecutar manualmente",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [-140, 200]
+    },
+    {
+      "id": "trigger-schedule",
+      "name": "Programado (opcional)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [-140, 380],
+      "notes": "Deshabilitado por defecto. Activar solo si se quiere correr la búsqueda automáticamente (ej. todos los días a la mañana).",
+      "disabled": true,
+      "parameters": {
+        "rule": {
+          "interval": [
+            { "field": "days", "daysInterval": 1, "triggerAtHour": 9 }
+          ]
+        }
+      }
+    },
+    {
+      "id": "set-params",
+      "name": "Parámetros de búsqueda",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [80, 280],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "param-query",
+              "name": "query",
+              "type": "string",
+              "value": "talleres mecánicos en Moreno, Buenos Aires"
+            },
+            {
+              "id": "param-maxresults",
+              "name": "maxResults",
+              "type": "number",
+              "value": "={{ Math.min($json.maxResults || 10, 20) }}"
+            }
+          ]
+        }
+      },
+      "notes": "Editar 'query' antes de ejecutar. maxResults queda siempre acotado a <= 20 (mismo límite que aplica la API) para controlar el costo de la búsqueda en Google Places."
+    },
+    {
+      "id": "http-login",
+      "name": "Login Hunter API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [320, 280],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.HUNTER_API_BASE_URL }}/api/v1/auth/login",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ email: $env.HUNTER_API_EMAIL, password: $env.HUNTER_API_PASSWORD }) }}",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "notes": "Credenciales leídas de variables de entorno del propio n8n (HUNTER_API_EMAIL / HUNTER_API_PASSWORD). Nunca quedan escritas en este JSON, así que es seguro versionarlo/compartirlo. Usar una cuenta de servicio con rol Manager, no Owner (mínimo privilegio)."
+    },
+    {
+      "id": "if-login-ok",
+      "name": "¿Login OK?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [560, 280],
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "typeValidation": "strict" },
+          "conditions": [
+            {
+              "id": "cond-login-success",
+              "leftValue": "={{ $json.success }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "error-login",
+      "name": "Error de autenticación",
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
+      "position": [780, 420],
+      "parameters": {
+        "errorMessage": "=No se pudo autenticar contra Hunter API: {{ $json.message || 'respuesta inesperada' }}"
+      }
+    },
+    {
+      "id": "http-import",
+      "name": "Importar desde Google Places",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [800, 200],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.HUNTER_API_BASE_URL }}/api/v1/imports/google-places",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $node['Login Hunter API'].json.data.accessToken }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ query: $('Parámetros de búsqueda').item.json.query, maxResults: $('Parámetros de búsqueda').item.json.maxResults }) }}",
+        "options": {
+          "timeout": 20000
+        }
+      },
+      "notes": "La API key de Google Places NUNCA pasa por n8n: vive únicamente en el backend de Hunter (appsettings del servidor). n8n solo llama a nuestro propio endpoint autenticado, que internamente habla con Google Places."
+    },
+    {
+      "id": "if-import-valid",
+      "name": "¿Import válido?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1040, 200],
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "typeValidation": "strict" },
+          "conditions": [
+            {
+              "id": "cond-import-success",
+              "leftValue": "={{ $json.success }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "equals" }
+            },
+            {
+              "id": "cond-import-valid-records",
+              "leftValue": "={{ $json.data.validRecords }}",
+              "rightValue": 0,
+              "operator": { "type": "number", "operation": "gt" }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "error-import",
+      "name": "Sin resultados válidos",
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
+      "position": [1260, 340],
+      "parameters": {
+        "errorMessage": "=La búsqueda \"{{ $('Parámetros de búsqueda').item.json.query }}\" no devolvió prospectos válidos para importar (total={{ $json.data?.totalRecords }}, válidos={{ $json.data?.validRecords }}, duplicados={{ $json.data?.duplicateRecords }})."
+      }
+    },
+    {
+      "id": "http-confirm",
+      "name": "Confirmar importación",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1280, 60],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.HUNTER_API_BASE_URL }}/api/v1/imports/{{ $json.data.batchId }}/confirm",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $node['Login Hunter API'].json.data.accessToken }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 15000
+        }
+      }
+    },
+    {
+      "id": "noop-done",
+      "name": "Importación completada",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [1500, 60],
+      "notes": "Fin del flujo feliz. data.created = cantidad de prospectos nuevos efectivamente creados."
+    }
+  ],
+  "connections": {
+    "Ejecutar manualmente": {
+      "main": [[{ "node": "Parámetros de búsqueda", "type": "main", "index": 0 }]]
+    },
+    "Programado (opcional)": {
+      "main": [[{ "node": "Parámetros de búsqueda", "type": "main", "index": 0 }]]
+    },
+    "Parámetros de búsqueda": {
+      "main": [[{ "node": "Login Hunter API", "type": "main", "index": 0 }]]
+    },
+    "Login Hunter API": {
+      "main": [[{ "node": "¿Login OK?", "type": "main", "index": 0 }]]
+    },
+    "¿Login OK?": {
+      "main": [
+        [{ "node": "Importar desde Google Places", "type": "main", "index": 0 }],
+        [{ "node": "Error de autenticación", "type": "main", "index": 0 }]
+      ]
+    },
+    "Importar desde Google Places": {
+      "main": [[{ "node": "¿Import válido?", "type": "main", "index": 0 }]]
+    },
+    "¿Import válido?": {
+      "main": [
+        [{ "node": "Confirmar importación", "type": "main", "index": 0 }],
+        [{ "node": "Sin resultados válidos", "type": "main", "index": 0 }]
+      ]
+    },
+    "Confirmar importación": {
+      "main": [[{ "node": "Importación completada", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "timezone": "America/Argentina/Buenos_Aires"
+  },
+  "meta": {
+    "templateCredsSetupCompleted": false
+  }
+}

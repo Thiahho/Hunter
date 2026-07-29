@@ -1,0 +1,40 @@
+{
+  "Logging": {
+    "LogLevel": {
+      "Default": "Information",
+      "Microsoft.AspNetCore": "Warning"
+    }
+  },
+  "ConnectionStrings": {
+    "HunterDb": "Host=localhost;Port=5432;Database=bd_hunter;Username=postgres;Password=CHANGE_ME"
+  },
+  "Jwt": {
+    "SigningKey": "CHANGE_ME_AT_LEAST_32_RANDOM_BYTES_BASE64"
+  },
+  "Webhooks": {
+    "InboundSecret": "CHANGE_ME"
+  },
+  "WhatsAppCloudApi": {
+    "PhoneNumberId": "CHANGE_ME_PHONE_NUMBER_ID",
+    "AccessToken": "CHANGE_ME_META_ACCESS_TOKEN",
+    "AppSecret": "CHANGE_ME_META_APP_SECRET",
+    "WebhookVerifyToken": "CHANGE_ME",
+    "OrganizationId": 1,
+    "TemplateName": ""
+  },
+  "GooglePlaces": {
+    "ApiKey": "CHANGE_ME_GOOGLE_PLACES_API_KEY"
+  },
+  "Serilog": {
+    "MinimumLevel": {
+      "Default": "Debug",
+      "Override": {
+        "Microsoft.AspNetCore": "Information",
+        "Microsoft.EntityFrameworkCore": "Information"
+      }
+    },
+    "WriteTo": [
+      { "Name": "Console" }
+    ]
+  }
+}

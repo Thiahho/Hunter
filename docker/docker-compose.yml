@@ -1,0 +1,34 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: hunter-postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-hunter}
+      POSTGRES_USER: ${POSTGRES_USER:-hunter}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required, copy .env.example to .env}
+    ports:
+      - "5433:5432"
+    volumes:
+      - hunter_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-hunter} -d ${POSTGRES_DB:-hunter}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    container_name: hunter-api
+    environment:
+      ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Development}
+      ConnectionStrings__HunterDb: Host=postgres;Port=5432;Database=${POSTGRES_DB:-hunter};Username=${POSTGRES_USER:-hunter};Password=${POSTGRES_PASSWORD}
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  hunter_postgres_data:
