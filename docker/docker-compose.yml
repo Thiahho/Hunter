@@ -24,6 +24,14 @@ services:
     environment:
       ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Development}
       ConnectionStrings__HunterDb: Host=postgres;Port=5432;Database=${POSTGRES_DB:-hunter};Username=${POSTGRES_USER:-hunter};Password=${POSTGRES_PASSWORD}
+      Jwt__SigningKey: ${JWT_SIGNING_KEY:?JWT_SIGNING_KEY is required, copy .env.example to .env}
+      Webhooks__InboundSecret: ${WEBHOOKS_INBOUND_SECRET:-}
+      WhatsAppCloudApi__PhoneNumberId: ${WHATSAPP_PHONE_NUMBER_ID:-}
+      WhatsAppCloudApi__AccessToken: ${WHATSAPP_ACCESS_TOKEN:-}
+      WhatsAppCloudApi__AppSecret: ${WHATSAPP_APP_SECRET:-}
+      WhatsAppCloudApi__WebhookVerifyToken: ${WHATSAPP_WEBHOOK_VERIFY_TOKEN:-}
+      GooglePlaces__ApiKey: ${GOOGLE_PLACES_API_KEY:-}
+      Cors__AllowedOrigins__0: ${CORS_ALLOWED_ORIGIN:-http://localhost:5173}
     ports:
       - "8080:8080"
     depends_on:
