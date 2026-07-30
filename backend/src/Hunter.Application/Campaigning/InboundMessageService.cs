@@ -8,10 +8,15 @@ using Hunter.Domain.Crm;
 using Hunter.Domain.Prospecting;
 using Hunter.Shared;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 
 namespace Hunter.Application.Campaigning;
 
-public class InboundMessageService(IHunterDbContext db, IIntentClassifier intentClassifier, IMessageProvider messageProvider) : IInboundMessageService
+public class InboundMessageService(
+    IHunterDbContext db,
+    IIntentClassifier intentClassifier,
+    IMessageProvider messageProvider,
+    ILogger<InboundMessageService> logger) : IInboundMessageService
 {
     private const decimal ConfidenceThreshold = 0.80m;
 
@@ -182,7 +187,12 @@ public class InboundMessageService(IHunterDbContext db, IIntentClassifier intent
             .FirstOrDefaultAsync(ct);
 
         if (catalogTemplate is null)
+        {
+            logger.LogWarning(
+                "[SendCatalog] Prospecto {ProspectId} marcado Interested pero la organización {OrganizationId} no tiene una plantilla de catálogo activa (IsCatalogTemplate=true). No se envió nada.",
+                prospect.Id, organizationId);
             return;
+        }
 
         var content = TemplateRenderer.Render(catalogTemplate.Content, prospect);
         var sendResult = await messageProvider.SendAsync(new SendMessageRequest(MessagingChannel.Whatsapp, contact, content), ct);
