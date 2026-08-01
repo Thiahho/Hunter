@@ -29,6 +29,33 @@ public class WhatsAppWebhookValue
 {
     [JsonPropertyName("messages")]
     public List<WhatsAppWebhookMessage>? Messages { get; set; }
+
+    [JsonPropertyName("statuses")]
+    public List<WhatsAppWebhookStatus>? Statuses { get; set; }
+}
+
+public class WhatsAppWebhookStatus
+{
+    [JsonPropertyName("id")]
+    public string Id { get; set; } = null!;
+
+    [JsonPropertyName("status")]
+    public string Status { get; set; } = null!;
+
+    [JsonPropertyName("timestamp")]
+    public string? Timestamp { get; set; }
+
+    [JsonPropertyName("errors")]
+    public List<WhatsAppWebhookStatusError>? Errors { get; set; }
+}
+
+public class WhatsAppWebhookStatusError
+{
+    [JsonPropertyName("title")]
+    public string? Title { get; set; }
+
+    [JsonPropertyName("message")]
+    public string? Message { get; set; }
 }
 
 public class WhatsAppWebhookMessage

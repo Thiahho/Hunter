@@ -209,6 +209,96 @@ public class ProspectService(IHunterDbContext db, ICurrentUserService currentUse
         return Result<bool>.Success(true);
     }
 
+    public async Task<Result<ProspectContactDto>> AddContactAsync(int prospectId, AddProspectContactRequest request, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(request.Value))
+            return Result<ProspectContactDto>.Failure("El valor de contacto es obligatorio.");
+
+        var prospect = await db.Prospects
+            .Include(p => p.Contacts)
+            .FirstOrDefaultAsync(p => p.Id == prospectId && !p.IsDeleted, ct);
+        if (prospect is null)
+            return Result<ProspectContactDto>.Failure("Prospecto no encontrado.");
+
+        var normalizedValue = ContactValueNormalizer.Normalize(request.Channel, request.Value);
+
+        if (request.IsPrimary)
+            foreach (var existing in prospect.Contacts)
+                existing.IsPrimary = false;
+
+        var contact = new ProspectContact
+        {
+            OrganizationId = prospect.OrganizationId,
+            ProspectId = prospect.Id,
+            Prospect = prospect,
+            Channel = request.Channel,
+            Value = normalizedValue,
+            IsPrimary = request.IsPrimary
+        };
+
+        db.ProspectContacts.Add(contact);
+        await db.SaveChangesAsync(ct);
+
+        return Result<ProspectContactDto>.Success(new ProspectContactDto(contact.Id, contact.Channel, contact.Value, contact.IsPrimary, contact.IsVerified));
+    }
+
+    public async Task<Result<ProspectContactDto>> UpdateContactAsync(int prospectId, int contactId, UpdateProspectContactRequest request, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(request.Value))
+            return Result<ProspectContactDto>.Failure("El valor de contacto es obligatorio.");
+
+        var prospect = await db.Prospects
+            .Include(p => p.Contacts)
+            .FirstOrDefaultAsync(p => p.Id == prospectId && !p.IsDeleted, ct);
+        if (prospect is null)
+            return Result<ProspectContactDto>.Failure("Prospecto no encontrado.");
+
+        var contact = prospect.Contacts.FirstOrDefault(c => c.Id == contactId);
+        if (contact is null)
+            return Result<ProspectContactDto>.Failure("Contacto no encontrado.");
+
+        if (request.IsPrimary)
+            foreach (var other in prospect.Contacts.Where(c => c.Id != contactId))
+                other.IsPrimary = false;
+
+        contact.Channel = request.Channel;
+        contact.Value = ContactValueNormalizer.Normalize(request.Channel, request.Value);
+        contact.IsPrimary = request.IsPrimary;
+
+        await db.SaveChangesAsync(ct);
+
+        return Result<ProspectContactDto>.Success(new ProspectContactDto(contact.Id, contact.Channel, contact.Value, contact.IsPrimary, contact.IsVerified));
+    }
+
+    public async Task<Result<bool>> RemoveContactAsync(int prospectId, int contactId, CancellationToken ct = default)
+    {
+        var prospect = await db.Prospects
+            .Include(p => p.Contacts)
+            .FirstOrDefaultAsync(p => p.Id == prospectId && !p.IsDeleted, ct);
+        if (prospect is null)
+            return Result<bool>.Failure("Prospecto no encontrado.");
+
+        var contact = prospect.Contacts.FirstOrDefault(c => c.Id == contactId);
+        if (contact is null)
+            return Result<bool>.Failure("Contacto no encontrado.");
+
+        if (prospect.Contacts.Count <= 1)
+            return Result<bool>.Failure("El prospecto debe tener al menos un contacto.");
+
+        db.ProspectContacts.Remove(contact);
+
+        if (contact.IsPrimary)
+        {
+            var next = prospect.Contacts.FirstOrDefault(c => c.Id != contactId);
+            if (next is not null)
+                next.IsPrimary = true;
+        }
+
+        await db.SaveChangesAsync(ct);
+
+        return Result<bool>.Success(true);
+    }
+
     private async Task AttachTagsAsync(Prospect prospect, IReadOnlyCollection<string> tagNames, int organizationId, CancellationToken ct)
     {
         foreach (var rawName in tagNames)

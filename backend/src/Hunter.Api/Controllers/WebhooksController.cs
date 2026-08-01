@@ -3,6 +3,7 @@ using System.Text.Json;
 using Hunter.Api.Contracts;
 using Hunter.Application.Campaigning;
 using Hunter.Application.Campaigning.Contracts;
+using Hunter.Domain.Campaigning;
 using Hunter.Infrastructure.Messaging;
 using Hunter.Shared;
 using Microsoft.AspNetCore.Authorization;
@@ -20,6 +21,7 @@ namespace Hunter.Api.Controllers;
 [Route("api/v1/webhooks/messaging")]
 public class WebhooksController(
     IInboundMessageService inboundMessageService,
+    IMessageStatusService messageStatusService,
     IConfiguration configuration,
     IOptions<WhatsAppCloudApiOptions> whatsAppOptions,
     ILogger<WebhooksController> logger) : ControllerBase
@@ -114,7 +116,39 @@ public class WebhooksController(
                 logger.LogWarning("[WhatsApp webhook] No se pudo procesar el mensaje {MessageId}: {Error}", message.Id, result.Error);
         }
 
-        // Meta reintenta si no respondemos 200 rápido; devolvemos OK aunque algún mensaje individual haya fallado.
+        var statuses = payload?.Entry
+            .SelectMany(e => e.Changes)
+            .Select(c => c.Value)
+            .Where(v => v?.Statuses is not null)
+            .SelectMany(v => v!.Statuses!) ?? [];
+
+        foreach (var status in statuses)
+        {
+            var mapped = MapStatus(status.Status);
+            if (mapped is null)
+                continue;
+
+            var timestamp = long.TryParse(status.Timestamp, out var unixSeconds)
+                ? DateTimeOffset.FromUnixTimeSeconds(unixSeconds)
+                : DateTimeOffset.UtcNow;
+
+            var failureReason = status.Errors?.FirstOrDefault() is { } error
+                ? $"{error.Title}: {error.Message}"
+                : null;
+
+            await messageStatusService.UpdateDeliveryStatusAsync(status.Id, mapped.Value, timestamp, failureReason, ct);
+        }
+
+        // Meta reintenta si no respondemos 200 rápido; devolvemos OK aunque algún evento individual haya fallado.
         return Ok();
     }
+
+    private static MessageStatus? MapStatus(string status) => status switch
+    {
+        "sent" => MessageStatus.Sent,
+        "delivered" => MessageStatus.Delivered,
+        "read" => MessageStatus.Read,
+        "failed" => MessageStatus.Failed,
+        _ => null
+    };
 }

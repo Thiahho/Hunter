@@ -29,7 +29,14 @@ public record LeadListItemDto(
     LeadStatus Status,
     LeadPriority Priority,
     int? AssignedToUserId,
-    DateTimeOffset CreatedAt);
+    DateTimeOffset CreatedAt,
+    string? ProspectAddress,
+    string? ProspectCity,
+    string? ProspectProvince,
+    string? ProspectCountry,
+    string? ProspectPostalCode,
+    double? ProspectLatitude,
+    double? ProspectLongitude);
 
 public record LeadQuery(
     LeadStatus? Status = null,

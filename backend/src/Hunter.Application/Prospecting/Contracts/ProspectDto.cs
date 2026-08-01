@@ -4,6 +4,10 @@ namespace Hunter.Application.Prospecting.Contracts;
 
 public record ProspectContactDto(int Id, ProspectContactChannel Channel, string Value, bool IsPrimary, bool IsVerified);
 
+public record AddProspectContactRequest(ProspectContactChannel Channel, string Value, bool IsPrimary);
+
+public record UpdateProspectContactRequest(ProspectContactChannel Channel, string Value, bool IsPrimary);
+
 public record ProspectSourceDto(int Id, ProspectSourceType SourceType, string? ExternalId, string? SourceUrl, DateTimeOffset CollectedAt);
 
 public record ProspectDto(

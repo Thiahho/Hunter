@@ -23,6 +23,13 @@ export interface LeadListItem {
   priority: LeadPriority;
   assignedToUserId: number | null;
   createdAt: string;
+  prospectAddress: string | null;
+  prospectCity: string | null;
+  prospectProvince: string | null;
+  prospectCountry: string | null;
+  prospectPostalCode: string | null;
+  prospectLatitude: number | null;
+  prospectLongitude: number | null;
 }
 
 export interface LeadActivity {

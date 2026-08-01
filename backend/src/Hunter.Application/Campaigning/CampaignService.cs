@@ -16,7 +16,7 @@ public class CampaignService(
     ISuppressionService suppressionService,
     IMessageProvider messageProvider) : ICampaignService
 {
-    private const string KillSwitchKey = "kill_switch";
+    private const string KillSwitchKey = OrganizationSettingsKeys.KillSwitch;
 
     public async Task<Result<CampaignDto>> CreateAsync(CreateCampaignRequest request, CancellationToken ct = default)
     {

@@ -12,4 +12,8 @@ public record MessageDto(
     MessageStatus Status,
     string? ExternalMessageId,
     DateTimeOffset? SentAt,
+    DateTimeOffset? DeliveredAt,
+    DateTimeOffset? ReadAt,
+    DateTimeOffset? FailedAt,
+    string? FailureReason,
     DateTimeOffset CreatedAt);

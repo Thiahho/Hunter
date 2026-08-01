@@ -1,3 +1,5 @@
+using Hunter.Application.Campaigning;
+using Hunter.Application.Campaigning.Contracts;
 using Hunter.Application.Prospecting;
 using Hunter.Application.Prospecting.Contracts;
 using Hunter.Domain.Prospecting;
@@ -10,7 +12,7 @@ namespace Hunter.Api.Controllers;
 [ApiController]
 [Authorize]
 [Route("api/v1/prospects")]
-public class ProspectsController(IProspectService prospectService) : ControllerBase
+public class ProspectsController(IProspectService prospectService, ITestMessageService testMessageService) : ControllerBase
 {
     [HttpGet]
     public async Task<IActionResult> Search(
@@ -71,6 +73,16 @@ public class ProspectsController(IProspectService prospectService) : ControllerB
         return Ok(ApiResponse<bool>.Ok(true));
     }
 
+    [HttpPost("{id:int}/test-message")]
+    public async Task<IActionResult> SendTestMessage(int id, SendTestMessageRequest request, CancellationToken ct)
+    {
+        var result = await testMessageService.SendAsync(id, request, ct);
+        if (!result.Succeeded)
+            return BadRequest(ApiResponse<TestMessageResultDto>.Fail(result.Error!));
+
+        return Ok(ApiResponse<TestMessageResultDto>.Ok(result.Value!));
+    }
+
     [HttpPost("{id:int}/tags")]
     public async Task<IActionResult> AddTag(int id, [FromBody] string tagName, CancellationToken ct)
     {
@@ -87,6 +99,36 @@ public class ProspectsController(IProspectService prospectService) : ControllerB
         var result = await prospectService.RemoveTagAsync(id, tagId, ct);
         if (!result.Succeeded)
             return NotFound(ApiResponse<bool>.Fail(result.Error!));
+
+        return Ok(ApiResponse<bool>.Ok(true));
+    }
+
+    [HttpPost("{id:int}/contacts")]
+    public async Task<IActionResult> AddContact(int id, AddProspectContactRequest request, CancellationToken ct)
+    {
+        var result = await prospectService.AddContactAsync(id, request, ct);
+        if (!result.Succeeded)
+            return BadRequest(ApiResponse<ProspectContactDto>.Fail(result.Error!));
+
+        return Ok(ApiResponse<ProspectContactDto>.Ok(result.Value!));
+    }
+
+    [HttpPut("{id:int}/contacts/{contactId:int}")]
+    public async Task<IActionResult> UpdateContact(int id, int contactId, UpdateProspectContactRequest request, CancellationToken ct)
+    {
+        var result = await prospectService.UpdateContactAsync(id, contactId, request, ct);
+        if (!result.Succeeded)
+            return BadRequest(ApiResponse<ProspectContactDto>.Fail(result.Error!));
+
+        return Ok(ApiResponse<ProspectContactDto>.Ok(result.Value!));
+    }
+
+    [HttpDelete("{id:int}/contacts/{contactId:int}")]
+    public async Task<IActionResult> RemoveContact(int id, int contactId, CancellationToken ct)
+    {
+        var result = await prospectService.RemoveContactAsync(id, contactId, ct);
+        if (!result.Succeeded)
+            return BadRequest(ApiResponse<bool>.Fail(result.Error!));
 
         return Ok(ApiResponse<bool>.Ok(true));
     }

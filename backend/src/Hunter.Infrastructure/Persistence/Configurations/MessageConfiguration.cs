@@ -17,6 +17,7 @@ public class MessageConfiguration : IEntityTypeConfiguration<Message>
         builder.Property(x => x.Content).IsRequired();
         builder.Property(x => x.ExternalMessageId).HasMaxLength(200);
         builder.Property(x => x.Status).HasConversion<string>().HasMaxLength(20);
+        builder.Property(x => x.FailureReason).HasMaxLength(500);
         builder.Property(x => x.Cost).HasColumnType("numeric(14,2)");
         builder.Property(x => x.Currency).HasMaxLength(3);
 

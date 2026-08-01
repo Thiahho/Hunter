@@ -24,7 +24,8 @@ public class WhatsAppCloudApiMessageProvider(
             return new SendMessageResult(false, null, $"WhatsAppCloudApiMessageProvider no soporta el canal {request.Channel}.");
 
         var opts = options.Value;
-        var payload = BuildPayload(opts, request.ToContact, request.Content);
+        var toContact = ToMetaWhatsAppFormat(request.ToContact);
+        var payload = BuildPayload(opts, toContact, request.Content);
 
         try
         {
@@ -51,6 +52,17 @@ public class WhatsAppCloudApiMessageProvider(
             logger.LogWarning(ex, "[WhatsAppCloudApi] Error de red enviando a {Contact}", request.ToContact);
             return new SendMessageResult(false, null, ex.Message);
         }
+    }
+
+    // Quirk documentado de Meta para Argentina: nuestros números se guardan con el "9" móvil
+    // (ej. 5491122692061, igual al wa_id real), pero el campo "to" de la Cloud API requiere
+    // el número SIN ese "9" (5411122692061 -> 541122692061) o rechaza el envío / no matchea
+    // la lista de números permitidos en modo desarrollo. Confirmado a mano contra la API real.
+    public static string ToMetaWhatsAppFormat(string normalizedPhone)
+    {
+        return normalizedPhone.Length == 13 && normalizedPhone.StartsWith("549")
+            ? "54" + normalizedPhone[3..]
+            : normalizedPhone;
     }
 
     private static object BuildPayload(WhatsAppCloudApiOptions opts, string to, string content)

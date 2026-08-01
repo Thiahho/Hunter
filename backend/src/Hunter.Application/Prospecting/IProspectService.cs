@@ -12,4 +12,7 @@ public interface IProspectService
     Task<Result<bool>> DeleteAsync(int id, CancellationToken ct = default);
     Task<Result<bool>> AddTagAsync(int prospectId, string tagName, CancellationToken ct = default);
     Task<Result<bool>> RemoveTagAsync(int prospectId, int tagId, CancellationToken ct = default);
+    Task<Result<ProspectContactDto>> AddContactAsync(int prospectId, AddProspectContactRequest request, CancellationToken ct = default);
+    Task<Result<ProspectContactDto>> UpdateContactAsync(int prospectId, int contactId, UpdateProspectContactRequest request, CancellationToken ct = default);
+    Task<Result<bool>> RemoveContactAsync(int prospectId, int contactId, CancellationToken ct = default);
 }

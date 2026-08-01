@@ -30,7 +30,8 @@ public class MessageQueryService(IHunterDbContext db) : IMessageQueryService
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .Select(m => new MessageDto(
-                m.Id, m.ProspectId, m.Prospect.BusinessName, m.CampaignId, m.Channel, m.Content, m.Status, m.ExternalMessageId, m.SentAt, m.CreatedAt))
+                m.Id, m.ProspectId, m.Prospect.BusinessName, m.CampaignId, m.Channel, m.Content, m.Status, m.ExternalMessageId,
+                m.SentAt, m.DeliveredAt, m.ReadAt, m.FailedAt, m.FailureReason, m.CreatedAt))
             .ToListAsync(ct);
 
         return new PagedResult<MessageDto> { Items = items, Page = page, PageSize = pageSize, TotalItems = totalItems };

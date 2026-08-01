@@ -25,6 +25,8 @@ public static class DependencyInjection
         services.AddScoped<ICampaignService, CampaignService>();
         services.AddScoped<IMessageQueryService, MessageQueryService>();
         services.AddScoped<IInboundMessageService, InboundMessageService>();
+        services.AddScoped<ITestMessageService, TestMessageService>();
+        services.AddScoped<IMessageStatusService, MessageStatusService>();
         services.AddScoped<ILeadService, LeadService>();
         services.AddScoped<ISaleQueryService, SaleQueryService>();
         services.AddScoped<ICostService, CostService>();

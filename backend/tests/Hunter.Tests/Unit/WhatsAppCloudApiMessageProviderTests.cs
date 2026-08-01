@@ -36,6 +36,28 @@ public class WhatsAppCloudApiMessageProviderTests
             httpClient, Options.Create(options), NullLogger<WhatsAppCloudApiMessageProvider>.Instance);
     }
 
+    [Theory]
+    [InlineData("5491122692061", "541122692061")] // móvil argentino: se quita el "9"
+    [InlineData("5491112345678", "541112345678")]
+    [InlineData("5511987654321", "5511987654321")] // no argentino: queda igual
+    [InlineData("541122692061", "541122692061")] // ya sin el "9": queda igual (idempotente)
+    public void ToMetaWhatsAppFormat_StripsArgentineMobileNine(string stored, string expected)
+    {
+        Assert.Equal(expected, WhatsAppCloudApiMessageProvider.ToMetaWhatsAppFormat(stored));
+    }
+
+    [Fact]
+    public async Task SendAsync_ArgentineMobileNumber_SendsWithoutTheNineToMeta()
+    {
+        var handler = new FakeHttpMessageHandler(HttpStatusCode.OK, """{"messages":[{"id":"wamid.ABC"}]}""");
+        var provider = CreateProvider(handler, new WhatsAppCloudApiOptions { PhoneNumberId = "123", AccessToken = "token" });
+
+        await provider.SendAsync(new SendMessageRequest(MessagingChannel.Whatsapp, "5491122692061", "hola"));
+
+        using var doc = JsonDocument.Parse(handler.LastRequestBody!);
+        Assert.Equal("541122692061", doc.RootElement.GetProperty("to").GetString());
+    }
+
     [Fact]
     public async Task SendAsync_NonWhatsappChannel_ReturnsFailureWithoutCallingApi()
     {
@@ -62,7 +84,7 @@ public class WhatsAppCloudApiMessageProviderTests
 
         using var doc = JsonDocument.Parse(handler.LastRequestBody!);
         Assert.Equal("text", doc.RootElement.GetProperty("type").GetString());
-        Assert.Equal("5491112345678", doc.RootElement.GetProperty("to").GetString());
+        Assert.Equal("541112345678", doc.RootElement.GetProperty("to").GetString()); // sin el "9" (quirk de Meta para Argentina)
         Assert.Equal("Hola, te contactamos de Repuestos Oeste", doc.RootElement.GetProperty("text").GetProperty("body").GetString());
     }
 

@@ -3,6 +3,7 @@ import { LoginPage } from './features/auth/LoginPage';
 import { DashboardPage } from './features/dashboard/DashboardPage';
 import { ProspectsListPage } from './features/prospects/ProspectsListPage';
 import { ProspectDetailPage } from './features/prospects/ProspectDetailPage';
+import { ProspectCreatePage } from './features/prospects/ProspectCreatePage';
 import { LeadsKanbanPage } from './features/leads/LeadsKanbanPage';
 import { LeadDetailPage } from './features/leads/LeadDetailPage';
 import { ProtectedRoute } from './components/ProtectedRoute';
@@ -30,6 +31,17 @@ export default function App() {
           <ProtectedRoute>
             <Layout>
               <ProspectsListPage />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/app/prospects/new"
+        element={
+          <ProtectedRoute>
+            <Layout>
+              <ProspectCreatePage />
             </Layout>
           </ProtectedRoute>
         }

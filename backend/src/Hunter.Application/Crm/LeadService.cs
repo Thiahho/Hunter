@@ -32,7 +32,21 @@ public class LeadService(IHunterDbContext db, ICurrentUserService currentUser) :
             .OrderByDescending(l => l.CreatedAt)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
-            .Select(l => new LeadListItemDto(l.Id, l.ProspectId, l.Prospect.BusinessName, l.Status, l.Priority, l.AssignedToUserId, l.CreatedAt))
+            .Select(l => new LeadListItemDto(
+                l.Id,
+                l.ProspectId,
+                l.Prospect.BusinessName,
+                l.Status,
+                l.Priority,
+                l.AssignedToUserId,
+                l.CreatedAt,
+                l.Prospect.Address,
+                l.Prospect.City,
+                l.Prospect.Province,
+                l.Prospect.Country,
+                l.Prospect.PostalCode,
+                l.Prospect.Latitude,
+                l.Prospect.Longitude))
             .ToListAsync(ct);
 
         return new PagedResult<LeadListItemDto> { Items = items, Page = page, PageSize = pageSize, TotalItems = totalItems };

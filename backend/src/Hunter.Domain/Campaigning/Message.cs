@@ -26,6 +26,7 @@ public class Message
     public DateTimeOffset? DeliveredAt { get; set; }
     public DateTimeOffset? ReadAt { get; set; }
     public DateTimeOffset? FailedAt { get; set; }
+    public string? FailureReason { get; set; }
 
     public decimal? Cost { get; set; }
     public string? Currency { get; set; }

@@ -25,6 +25,7 @@ export type ProspectStatus =
   | 'Invalid';
 
 export type BusinessSize = 'Unknown' | 'Micro' | 'Small' | 'Medium' | 'Large';
+export type RecurrencePotential = 'Unknown' | 'Low' | 'Medium' | 'High';
 export type OperationalPriority = 'PriorityD' | 'PriorityC' | 'PriorityB' | 'PriorityA';
 export type ProspectContactChannel = 'Phone' | 'Whatsapp' | 'Email' | 'Instagram' | 'Facebook';
 export type ProspectSourceType =
@@ -72,7 +73,7 @@ export interface Prospect {
   contactName: string | null;
   category: ProspectCategory;
   businessSize: BusinessSize;
-  recurrencePotential: string;
+  recurrencePotential: RecurrencePotential;
   address: string | null;
   city: string | null;
   province: string | null;
@@ -116,6 +117,109 @@ export async function fetchProspectById(id: number): Promise<Prospect> {
   const response = await apiClient.get<ApiResponse<Prospect>>(`/prospects/${id}`);
   if (!response.data.success || !response.data.data) {
     throw new Error(response.data.message ?? 'No se pudo obtener el prospecto.');
+  }
+  return response.data.data;
+}
+
+export interface CreateProspectRequest {
+  businessName: string;
+  contactName?: string | null;
+  category: ProspectCategory;
+  businessSize: BusinessSize;
+  recurrencePotential: RecurrencePotential;
+  address?: string | null;
+  city?: string | null;
+  province?: string | null;
+  country?: string | null;
+  postalCode?: string | null;
+  website?: string | null;
+  contacts: { channel: ProspectContactChannel; value: string; isPrimary: boolean }[];
+  sourceType: ProspectSourceType;
+}
+
+export async function createProspect(request: CreateProspectRequest): Promise<Prospect> {
+  const response = await apiClient.post<ApiResponse<Prospect>>('/prospects', request);
+  if (!response.data.success || !response.data.data) {
+    throw new Error(response.data.message ?? 'No se pudo crear el prospecto.');
+  }
+  return response.data.data;
+}
+
+export interface UpdateProspectRequest {
+  businessName: string;
+  contactName?: string | null;
+  category: ProspectCategory;
+  businessSize: BusinessSize;
+  recurrencePotential: RecurrencePotential;
+  address?: string | null;
+  city?: string | null;
+  province?: string | null;
+  country?: string | null;
+  postalCode?: string | null;
+  website?: string | null;
+  status: ProspectStatus;
+}
+
+export async function updateProspect(id: number, request: UpdateProspectRequest): Promise<Prospect> {
+  const response = await apiClient.put<ApiResponse<Prospect>>(`/prospects/${id}`, request);
+  if (!response.data.success || !response.data.data) {
+    throw new Error(response.data.message ?? 'No se pudo actualizar el prospecto.');
+  }
+  return response.data.data;
+}
+
+export interface AddProspectContactRequest {
+  channel: ProspectContactChannel;
+  value: string;
+  isPrimary: boolean;
+}
+
+export interface UpdateProspectContactRequest {
+  channel: ProspectContactChannel;
+  value: string;
+  isPrimary: boolean;
+}
+
+export async function addProspectContact(prospectId: number, request: AddProspectContactRequest): Promise<ProspectContact> {
+  const response = await apiClient.post<ApiResponse<ProspectContact>>(`/prospects/${prospectId}/contacts`, request);
+  if (!response.data.success || !response.data.data) {
+    throw new Error(response.data.message ?? 'No se pudo agregar el contacto.');
+  }
+  return response.data.data;
+}
+
+export async function updateProspectContact(
+  prospectId: number,
+  contactId: number,
+  request: UpdateProspectContactRequest,
+): Promise<ProspectContact> {
+  const response = await apiClient.put<ApiResponse<ProspectContact>>(`/prospects/${prospectId}/contacts/${contactId}`, request);
+  if (!response.data.success || !response.data.data) {
+    throw new Error(response.data.message ?? 'No se pudo actualizar el contacto.');
+  }
+  return response.data.data;
+}
+
+export async function removeProspectContact(prospectId: number, contactId: number): Promise<void> {
+  const response = await apiClient.delete<ApiResponse<boolean>>(`/prospects/${prospectId}/contacts/${contactId}`);
+  if (!response.data.success) {
+    throw new Error(response.data.message ?? 'No se pudo eliminar el contacto.');
+  }
+}
+
+export interface TestMessageResult {
+  messageId: number;
+  success: boolean;
+  externalMessageId: string | null;
+  error: string | null;
+}
+
+export async function sendTestMessage(prospectId: number, content: string): Promise<TestMessageResult> {
+  const response = await apiClient.post<ApiResponse<TestMessageResult>>(`/prospects/${prospectId}/test-message`, {
+    content,
+  });
+  if (!response.data.success || !response.data.data) {
+    throw new Error(response.data.message ?? 'No se pudo enviar el mensaje de prueba.');
   }
   return response.data.data;
 }

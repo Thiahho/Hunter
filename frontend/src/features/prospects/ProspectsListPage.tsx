@@ -65,7 +65,15 @@ export function ProspectsListPage() {
 
   return (
     <div className="space-y-4">
-      <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Prospectos</h2>
+      <div className="flex items-center justify-between">
+        <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Prospectos</h2>
+        <Link
+          to="/app/prospects/new"
+          className="rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-500"
+        >
+          Nuevo prospecto
+        </Link>
+      </div>
 
       <div className="flex flex-wrap gap-3">
         <input
