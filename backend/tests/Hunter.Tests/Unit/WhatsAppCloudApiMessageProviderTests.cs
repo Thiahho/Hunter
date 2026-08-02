@@ -112,6 +112,30 @@ public class WhatsAppCloudApiMessageProviderTests
     }
 
     [Fact]
+    public async Task SendAsync_TemplateWithoutBodyParameter_OmitsComponents()
+    {
+        var handler = new FakeHttpMessageHandler(HttpStatusCode.OK,
+            """{"messages":[{"id":"wamid.NOPARAM"}]}""");
+        var provider = CreateProvider(handler, new WhatsAppCloudApiOptions
+        {
+            PhoneNumberId = "123",
+            AccessToken = "token",
+            TemplateName = "bienvenida_general",
+            TemplateLanguage = "es_AR",
+            TemplateHasBodyParameter = false
+        });
+
+        var result = await provider.SendAsync(new SendMessageRequest(MessagingChannel.Whatsapp, "5491112345678", "contenido"));
+
+        Assert.True(result.Success);
+
+        using var doc = JsonDocument.Parse(handler.LastRequestBody!);
+        Assert.Equal("template", doc.RootElement.GetProperty("type").GetString());
+        Assert.Equal("bienvenida_general", doc.RootElement.GetProperty("template").GetProperty("name").GetString());
+        Assert.False(doc.RootElement.GetProperty("template").TryGetProperty("components", out _));
+    }
+
+    [Fact]
     public async Task SendAsync_ApiReturnsError_ReturnsFailureWithMessage()
     {
         var handler = new FakeHttpMessageHandler(HttpStatusCode.BadRequest,

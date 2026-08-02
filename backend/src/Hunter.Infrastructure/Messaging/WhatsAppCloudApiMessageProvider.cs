@@ -67,7 +67,7 @@ public class WhatsAppCloudApiMessageProvider(
 
     private static object BuildPayload(WhatsAppCloudApiOptions opts, string to, string content)
     {
-        if (!string.IsNullOrWhiteSpace(opts.TemplateName))
+        if (!string.IsNullOrWhiteSpace(opts.TemplateName) && opts.TemplateHasBodyParameter)
         {
             return new
             {
@@ -86,6 +86,23 @@ public class WhatsAppCloudApiMessageProvider(
                             parameters = new object[] { new { type = "text", text = content } }
                         }
                     }
+                }
+            };
+        }
+
+        if (!string.IsNullOrWhiteSpace(opts.TemplateName))
+        {
+            // Plantilla aprobada sin variables: Meta rechaza el envío con (#132000) si se manda
+            // el objeto "components" cuando la plantilla no tiene ningún parámetro esperado.
+            return new
+            {
+                messaging_product = "whatsapp",
+                to,
+                type = "template",
+                template = new
+                {
+                    name = opts.TemplateName,
+                    language = new { code = opts.TemplateLanguage }
                 }
             };
         }
