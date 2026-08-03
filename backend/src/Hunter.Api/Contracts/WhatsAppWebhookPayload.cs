@@ -74,10 +74,67 @@ public class WhatsAppWebhookMessage
 
     [JsonPropertyName("text")]
     public WhatsAppWebhookText? Text { get; set; }
+
+    // Tap de un botón quick_reply de una plantilla (ej. "Soy Mayorista" / "Tengo Casa de
+    // Repuestos"). Meta manda estos con Type == "button".
+    [JsonPropertyName("button")]
+    public WhatsAppWebhookButton? Button { get; set; }
+
+    // Tap de un botón de un mensaje interactivo (no de plantilla). Meta manda estos con
+    // Type == "interactive". No lo usamos hoy, pero lo parseamos para no volver a caer en el
+    // mismo bug de descarte silencioso si algún día se manda un mensaje interactivo.
+    [JsonPropertyName("interactive")]
+    public WhatsAppWebhookInteractive? Interactive { get; set; }
+
+    // Referencia al mensaje saliente que originó esta respuesta (id = wamid). Permite
+    // correlacionar la respuesta con la campaña/plantilla exacta que se envió, incluso para
+    // mensajes de texto plano.
+    [JsonPropertyName("context")]
+    public WhatsAppWebhookContext? Context { get; set; }
 }
 
 public class WhatsAppWebhookText
 {
     [JsonPropertyName("body")]
     public string Body { get; set; } = null!;
+}
+
+public class WhatsAppWebhookButton
+{
+    // Valor exacto configurado al enviar el componente "button" (sub_type: quick_reply).
+    // Es lo que usamos para mapear al rubro (QuickReplyButtonMapper). Meta puede omitirlo o
+    // repetir el texto acá si el envío no incluyó el parámetro de payload.
+    [JsonPropertyName("payload")]
+    public string? Payload { get; set; }
+
+    // Etiqueta visible del botón (ej. "Soy Mayorista").
+    [JsonPropertyName("text")]
+    public string? Text { get; set; }
+}
+
+public class WhatsAppWebhookInteractive
+{
+    [JsonPropertyName("type")]
+    public string? Type { get; set; }
+
+    [JsonPropertyName("button_reply")]
+    public WhatsAppWebhookButtonReply? ButtonReply { get; set; }
+}
+
+public class WhatsAppWebhookButtonReply
+{
+    [JsonPropertyName("id")]
+    public string? Id { get; set; }
+
+    [JsonPropertyName("title")]
+    public string? Title { get; set; }
+}
+
+public class WhatsAppWebhookContext
+{
+    [JsonPropertyName("id")]
+    public string? Id { get; set; }
+
+    [JsonPropertyName("from")]
+    public string? From { get; set; }
 }

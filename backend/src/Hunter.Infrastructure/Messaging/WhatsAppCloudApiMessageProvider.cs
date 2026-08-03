@@ -18,6 +18,8 @@ public class WhatsAppCloudApiMessageProvider(
 {
     public string ProviderName => "whatsapp_cloud_api";
 
+    public string? HandoffTemplateName => options.Value.HandoffTemplateName;
+
     public async Task<SendMessageResult> SendAsync(SendMessageRequest request, CancellationToken ct = default)
     {
         if (request.Channel != MessagingChannel.Whatsapp)
@@ -67,45 +69,71 @@ public class WhatsAppCloudApiMessageProvider(
 
     private static object BuildPayload(WhatsAppCloudApiOptions opts, string to, SendMessageRequest request)
     {
-        if (!string.IsNullOrWhiteSpace(opts.TemplateName))
+        // Plantilla ad-hoc (ej. handoff a vendedores) con parámetros explícitos: pisa
+        // TemplateName/PreferFreeText, no lleva botones quick-reply.
+        if (!string.IsNullOrWhiteSpace(request.TemplateNameOverride))
         {
-            var bodyParameters = BuildTemplateBodyParameters(opts, request);
-
-            return new
-            {
-                messaging_product = "whatsapp",
-                to,
-                type = "template",
-                template = bodyParameters is null
-                    ? new
-                    {
-                        name = opts.TemplateName,
-                        language = new { code = opts.TemplateLanguage }
-                    }
-                    : (object)new
-                    {
-                        name = opts.TemplateName,
-                        language = new { code = opts.TemplateLanguage },
-                        components = new object[]
-                        {
-                            new
-                            {
-                                type = "body",
-                                parameters = bodyParameters.Select(p => new { type = "text", text = p }).ToArray()
-                            }
-                        }
-                    }
-            };
+            return BuildTemplatePayload(
+                to, request.TemplateNameOverride, opts.HandoffTemplateLanguage,
+                request.TemplateParameters, quickReplyPayloads: []);
         }
 
-        // Sin plantilla aprobada por Meta configurada: solo funciona dentro de la ventana
-        // de servicio de 24hs (ej. respuestas a un inbound), no para contacto en frío.
+        // PreferFreeText fuerza texto libre aunque haya TemplateName configurada: usado para
+        // respuestas dentro de la ventana de servicio de 24hs (catálogo, handoff sin plantilla
+        // propia), donde texto libre es legal y evita repetir la plantilla de campaña.
+        if (!request.PreferFreeText && !string.IsNullOrWhiteSpace(opts.TemplateName))
+        {
+            var bodyParameters = BuildTemplateBodyParameters(opts, request);
+            return BuildTemplatePayload(to, opts.TemplateName, opts.TemplateLanguage, bodyParameters, opts.TemplateQuickReplyPayloads);
+        }
+
+        // Sin plantilla aprobada por Meta configurada (o PreferFreeText): solo funciona dentro
+        // de la ventana de servicio de 24hs (ej. respuestas a un inbound), no para contacto en frío.
         return new
         {
             messaging_product = "whatsapp",
             to,
             type = "text",
             text = new { body = request.Content }
+        };
+    }
+
+    private static object BuildTemplatePayload(
+        string to, string templateName, string language, IReadOnlyList<string>? bodyParameters, IList<string> quickReplyPayloads)
+    {
+        var components = new List<object>();
+
+        if (bodyParameters is not null)
+        {
+            components.Add(new
+            {
+                type = "body",
+                parameters = bodyParameters.Select(p => new { type = "text", text = p }).ToArray()
+            });
+        }
+
+        // Meta rechaza el envío con (#132000) si el orden/cantidad de botones no coincide
+        // EXACTO con lo aprobado para la plantilla, de ahí que el index se derive de la
+        // posición configurada en TemplateQuickReplyPayloads (0, 1, ...).
+        for (var i = 0; i < quickReplyPayloads.Count; i++)
+        {
+            components.Add(new
+            {
+                type = "button",
+                sub_type = "quick_reply",
+                index = i.ToString(),
+                parameters = new object[] { new { type = "payload", payload = quickReplyPayloads[i] } }
+            });
+        }
+
+        return new
+        {
+            messaging_product = "whatsapp",
+            to,
+            type = "template",
+            template = components.Count == 0
+                ? new { name = templateName, language = new { code = language } }
+                : (object)new { name = templateName, language = new { code = language }, components = components.ToArray() }
         };
     }
 

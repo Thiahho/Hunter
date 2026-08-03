@@ -24,5 +24,10 @@ public class MessageResponse
 
     public string? ExternalInboundId { get; set; }
 
+    // Payload crudo del botón quick-reply tocado por el prospecto (ver QuickReplyButtonMapper),
+    // cuando la respuesta vino de un botón. Null para respuestas de texto libre. Es el único
+    // rastro de "por qué se ruteó así" que no se puede derivar de Prospect.Category a posteriori.
+    public string? ButtonPayload { get; set; }
+
     public DateTimeOffset? ProcessedAt { get; set; }
 }

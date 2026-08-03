@@ -18,6 +18,7 @@ public class MessageResponseConfiguration : IEntityTypeConfiguration<MessageResp
         builder.Property(x => x.AiModel).HasMaxLength(100);
         builder.Property(x => x.AiPromptVersion).HasMaxLength(50);
         builder.Property(x => x.ExternalInboundId).HasMaxLength(200);
+        builder.Property(x => x.ButtonPayload).HasMaxLength(100);
 
         builder.HasIndex(x => new { x.OrganizationId, x.ProspectId });
         builder.HasIndex(x => x.CampaignId);

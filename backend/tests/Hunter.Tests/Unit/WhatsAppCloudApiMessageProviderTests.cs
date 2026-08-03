@@ -174,4 +174,121 @@ public class WhatsAppCloudApiMessageProviderTests
         Assert.False(result.Success);
         Assert.Equal("Invalid phone number", result.Error);
     }
+
+    [Fact]
+    public async Task SendAsync_TemplateWithQuickReplyPayload_SendsButtonComponentAfterBody()
+    {
+        var handler = new FakeHttpMessageHandler(HttpStatusCode.OK,
+            """{"messages":[{"id":"wamid.BUTTONS"}]}""");
+        var provider = CreateProvider(handler, new WhatsAppCloudApiOptions
+        {
+            PhoneNumberId = "123",
+            AccessToken = "token",
+            TemplateName = "bienvenida_general",
+            TemplateLanguage = "es_AR",
+            TemplateBodyParameterCount = 0,
+            TemplateQuickReplyPayloads = ["ESTOY_INTERESADO"]
+        });
+
+        var result = await provider.SendAsync(new SendMessageRequest(MessagingChannel.Whatsapp, "5491112345678", "contenido"));
+
+        Assert.True(result.Success);
+
+        using var doc = JsonDocument.Parse(handler.LastRequestBody!);
+        var components = doc.RootElement.GetProperty("template").GetProperty("components");
+        Assert.Equal(1, components.GetArrayLength()); // sin body (TemplateBodyParameterCount = 0), un solo botón
+
+        var button0 = components[0];
+        Assert.Equal("button", button0.GetProperty("type").GetString());
+        Assert.Equal("quick_reply", button0.GetProperty("sub_type").GetString());
+        Assert.Equal("0", button0.GetProperty("index").GetString());
+        Assert.Equal("ESTOY_INTERESADO", button0.GetProperty("parameters")[0].GetProperty("payload").GetString());
+    }
+
+    [Fact]
+    public async Task SendAsync_TemplateWithBodyParameterAndQuickReplyPayload_SendsBodyThenButtonComponent()
+    {
+        var handler = new FakeHttpMessageHandler(HttpStatusCode.OK,
+            """{"messages":[{"id":"wamid.BUTTONS2"}]}""");
+        var provider = CreateProvider(handler, new WhatsAppCloudApiOptions
+        {
+            PhoneNumberId = "123",
+            AccessToken = "token",
+            TemplateName = "bienvenida_general",
+            TemplateLanguage = "es_AR",
+            TemplateBodyParameterCount = 1,
+            TemplateQuickReplyPayloads = ["ESTOY_INTERESADO"]
+        });
+
+        var result = await provider.SendAsync(new SendMessageRequest(
+            MessagingChannel.Whatsapp, "5491112345678", "contenido", "Ferretería Sur"));
+
+        Assert.True(result.Success);
+
+        using var doc = JsonDocument.Parse(handler.LastRequestBody!);
+        var components = doc.RootElement.GetProperty("template").GetProperty("components");
+        Assert.Equal(2, components.GetArrayLength()); // body + un botón
+
+        Assert.Equal("body", components[0].GetProperty("type").GetString());
+
+        var button0 = components[1];
+        Assert.Equal("quick_reply", button0.GetProperty("sub_type").GetString());
+        Assert.Equal("0", button0.GetProperty("index").GetString());
+        Assert.Equal("ESTOY_INTERESADO", button0.GetProperty("parameters")[0].GetProperty("payload").GetString());
+    }
+
+    [Fact]
+    public async Task SendAsync_PreferFreeText_IgnoresConfiguredTemplate()
+    {
+        var handler = new FakeHttpMessageHandler(HttpStatusCode.OK,
+            """{"messages":[{"id":"wamid.FREETEXT"}]}""");
+        var provider = CreateProvider(handler, new WhatsAppCloudApiOptions
+        {
+            PhoneNumberId = "123",
+            AccessToken = "token",
+            TemplateName = "bienvenida_general"
+        });
+
+        var result = await provider.SendAsync(new SendMessageRequest(
+            MessagingChannel.Whatsapp, "5491112345678", "el catalogo real", PreferFreeText: true));
+
+        Assert.True(result.Success);
+
+        using var doc = JsonDocument.Parse(handler.LastRequestBody!);
+        Assert.Equal("text", doc.RootElement.GetProperty("type").GetString());
+        Assert.Equal("el catalogo real", doc.RootElement.GetProperty("text").GetProperty("body").GetString());
+    }
+
+    [Fact]
+    public async Task SendAsync_TemplateNameOverride_SendsHandoffTemplateWithExplicitParameters()
+    {
+        var handler = new FakeHttpMessageHandler(HttpStatusCode.OK,
+            """{"messages":[{"id":"wamid.HANDOFF"}]}""");
+        var provider = CreateProvider(handler, new WhatsAppCloudApiOptions
+        {
+            PhoneNumberId = "123",
+            AccessToken = "token",
+            TemplateName = "bienvenida_general", // no debe usarse: el override manda
+            HandoffTemplateLanguage = "es"
+        });
+
+        var result = await provider.SendAsync(new SendMessageRequest(
+            MessagingChannel.Whatsapp, "5491112345678", "texto libre (ignorado)",
+            TemplateNameOverride: "nuevo_lead",
+            TemplateParameters: ["Repuestos Oeste", "Moreno", "Casa de repuestos", "92", "Me pasas info?"]));
+
+        Assert.True(result.Success);
+
+        using var doc = JsonDocument.Parse(handler.LastRequestBody!);
+        Assert.Equal("template", doc.RootElement.GetProperty("type").GetString());
+        Assert.Equal("nuevo_lead", doc.RootElement.GetProperty("template").GetProperty("name").GetString());
+        Assert.Equal("es", doc.RootElement.GetProperty("template").GetProperty("language").GetProperty("code").GetString());
+
+        var parameters = doc.RootElement.GetProperty("template").GetProperty("components")[0].GetProperty("parameters");
+        Assert.Equal(5, parameters.GetArrayLength());
+        Assert.Equal("Repuestos Oeste", parameters[0].GetProperty("text").GetString());
+
+        // No debe llevar botones quick-reply: es una plantilla de notificación interna, no la de campaña.
+        Assert.Equal(1, doc.RootElement.GetProperty("template").GetProperty("components").GetArrayLength());
+    }
 }

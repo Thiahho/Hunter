@@ -34,6 +34,14 @@ services:
       WhatsAppCloudApi__TemplateLanguage: ${WHATSAPP_TEMPLATE_LANGUAGE:-es}
       WhatsAppCloudApi__TemplateBodyParameterCount: ${WHATSAPP_TEMPLATE_BODY_PARAMETER_COUNT:-1}
       WhatsAppCloudApi__TemplateSecondParameter: ${WHATSAPP_TEMPLATE_SECOND_PARAMETER:-}
+      # Botón quick_reply de TemplateName ("Estoy interesado"). No se define acá con :N indexado
+      # porque un valor vacío por defecto crearía un elemento "" en la lista (rompe BuildPayload:
+      # agregaría un botón con payload vacío). Setear editando este archivo, o vía las variables
+      # de entorno de la plataforma de deploy, recién cuando la plantilla con el botón esté
+      # aprobada en Meta.
+      # WhatsAppCloudApi__TemplateQuickReplyPayloads__0: ESTOY_INTERESADO
+      WhatsAppCloudApi__HandoffTemplateName: ${WHATSAPP_HANDOFF_TEMPLATE_NAME:-}
+      WhatsAppCloudApi__HandoffTemplateLanguage: ${WHATSAPP_HANDOFF_TEMPLATE_LANGUAGE:-es}
       GooglePlaces__ApiKey: ${GOOGLE_PLACES_API_KEY:-}
       Cors__AllowedOrigins__0: ${CORS_ALLOWED_ORIGIN:-http://localhost:5173}
     ports:

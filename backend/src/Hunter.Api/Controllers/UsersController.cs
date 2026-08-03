@@ -29,4 +29,14 @@ public class UsersController(IUserService userService, ICurrentUserService curre
 
         return Ok(ApiResponse<UserDto>.Ok(result.Value!));
     }
+
+    [HttpPatch("{id:int}")]
+    public async Task<IActionResult> Update(int id, UpdateUserRequest request, CancellationToken ct)
+    {
+        var result = await userService.UpdateAsync(currentUserService.OrganizationId!.Value, id, request, ct);
+        if (!result.Succeeded)
+            return BadRequest(ApiResponse<UserDto>.Fail(result.Error!));
+
+        return Ok(ApiResponse<UserDto>.Ok(result.Value!));
+    }
 }

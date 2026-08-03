@@ -1,3 +1,5 @@
+using Hunter.Domain.Identity;
+
 namespace Hunter.Application.Auth.Contracts;
 
 public record UserDto(
@@ -6,4 +8,6 @@ public record UserDto(
     string LastName,
     string Email,
     bool IsActive,
-    IReadOnlyCollection<string> Roles);
+    IReadOnlyCollection<string> Roles,
+    string? Phone,
+    UserArea Area);

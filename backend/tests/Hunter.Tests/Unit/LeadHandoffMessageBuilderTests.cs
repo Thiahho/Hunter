@@ -1,0 +1,91 @@
+using Hunter.Application.Crm;
+using Hunter.Domain.Prospecting;
+
+namespace Hunter.Tests.Unit;
+
+public class LeadHandoffMessageBuilderTests
+{
+    private static Prospect FullProspect() => new()
+    {
+        BusinessName = "Repuestos Oeste",
+        City = "Moreno",
+        Category = ProspectCategory.AutoPartsStore,
+        CommercialScore = 92
+    };
+
+    [Fact]
+    public void BuildFreeText_FullProspect_IncludesAllLines()
+    {
+        var text = LeadHandoffMessageBuilder.BuildFreeText(FullProspect(), "¿Me pasás catálogo?");
+
+        Assert.Contains("🔥 NUEVO LEAD", text);
+        Assert.Contains("Repuestos Oeste", text);
+        Assert.Contains("📍 Moreno", text);
+        Assert.Contains("🏷 Casa de repuestos", text);
+        Assert.Contains("📊 Score: 92", text);
+        Assert.Contains("¿Me pasás catálogo?", text);
+    }
+
+    [Fact]
+    public void BuildFreeText_NoCityNoScore_OmitsThoseLines()
+    {
+        var prospect = new Prospect { BusinessName = "Taller Juan", Category = ProspectCategory.Workshop };
+
+        var text = LeadHandoffMessageBuilder.BuildFreeText(prospect, "hola");
+
+        Assert.DoesNotContain("📍", text);
+        Assert.DoesNotContain("📊", text);
+        Assert.Contains("🏷 Taller", text);
+    }
+
+    [Fact]
+    public void BuildFreeText_TruncatesLongProspectMessage()
+    {
+        var longMessage = new string('a', 500);
+
+        var text = LeadHandoffMessageBuilder.BuildFreeText(FullProspect(), longMessage);
+
+        Assert.Contains("…", text);
+        Assert.DoesNotContain(new string('a', 400), text);
+    }
+
+    [Fact]
+    public void BuildTemplateParameters_ReturnsFiveParametersInOrder()
+    {
+        var parameters = LeadHandoffMessageBuilder.BuildTemplateParameters(FullProspect(), "¿Me pasás catálogo?");
+
+        Assert.Equal(5, parameters.Count);
+        Assert.Equal("Repuestos Oeste", parameters[0]);
+        Assert.Equal("Moreno", parameters[1]);
+        Assert.Equal("Casa de repuestos", parameters[2]);
+        Assert.Equal("92", parameters[3]);
+        Assert.Equal("¿Me pasás catálogo?", parameters[4]);
+    }
+
+    [Fact]
+    public void BuildTemplateParameters_MultilineProspectMessage_HasNoNewlinesTabsOrLongSpaceRuns()
+    {
+        // Guarda contra el error #132000 de Meta: un parámetro de plantilla con salto de línea,
+        // tab o 4+ espacios seguidos hace que rechace el envío entero.
+        var messyMessage = "Hola\n\nquiero\tinfo    del catalogo\r\ncompleto";
+
+        var parameters = LeadHandoffMessageBuilder.BuildTemplateParameters(FullProspect(), messyMessage);
+        var sanitizedMessage = parameters[4];
+
+        Assert.DoesNotContain("\n", sanitizedMessage);
+        Assert.DoesNotContain("\r", sanitizedMessage);
+        Assert.DoesNotContain("\t", sanitizedMessage);
+        Assert.DoesNotContain("    ", sanitizedMessage);
+    }
+
+    [Fact]
+    public void BuildTemplateParameters_MissingCityAndScore_UsesPlaceholder()
+    {
+        var prospect = new Prospect { BusinessName = "Taller Juan", Category = ProspectCategory.Workshop };
+
+        var parameters = LeadHandoffMessageBuilder.BuildTemplateParameters(prospect, "hola");
+
+        Assert.Equal("-", parameters[1]);
+        Assert.Equal("-", parameters[3]);
+    }
+}

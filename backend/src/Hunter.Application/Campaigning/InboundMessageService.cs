@@ -20,6 +20,12 @@ public class InboundMessageService(
 {
     private const decimal ConfidenceThreshold = 0.80m;
 
+    // Modelo/versión sintéticos para clasificaciones que no pasaron por el clasificador de
+    // reglas: el tap de un botón es una señal de compra más fuerte y determinista que
+    // cualquier frase, así que se registra aparte para poder distinguirla en auditoría.
+    private const string QuickReplyModelName = "quick-reply-button-v1";
+    private const string QuickReplyPromptVersion = "n/a";
+
     public async Task<Result<InboundMessageResultDto>> ProcessAsync(InboundMessageRequest request, CancellationToken ct = default)
     {
         var organizationExists = await db.Organizations.IgnoreQueryFilters()
@@ -86,7 +92,20 @@ public class InboundMessageService(
             originatingMessageId = lastMessage?.Id;
         }
 
-        var classification = await intentClassifier.ClassifyAsync(request.Content, ct);
+        // Solo se interpreta como tap de botón cuando ButtonPayload no es nulo. Nunca se corre
+        // el fallback por texto sobre contenido de texto libre arbitrario: eso podría marcar
+        // como Interested a un prospecto que simplemente mencione "interesado" de pasada.
+        var isInterestButtonTap = request.ButtonPayload is not null
+            && QuickReplyButtonMapper.IsInterestTap(request.ButtonPayload, request.Content);
+
+        // Tocar el botón "Estoy interesado" es una señal de compra más fuerte y determinista
+        // que cualquier frase del clasificador de reglas: se sintetiza Interested con confianza
+        // máxima en vez de pasar por IIntentClassifier. No toca Prospect.Category: con un solo
+        // botón genérico ya no hay rubro que autodeclarar acá, el ruteo Administración/Ventas
+        // sigue leyendo Category tal cual esté cargado de antes (import, carga manual, etc.).
+        var classification = isInterestButtonTap
+            ? new IntentClassificationResult(IntentClassification.Interested, 1.00m, QuickReplyModelName, QuickReplyPromptVersion)
+            : await intentClassifier.ClassifyAsync(request.Content, ct);
 
         var effective = classification.Classification;
         if (effective is IntentClassification.Interested or IntentClassification.Question && classification.Confidence < ConfidenceThreshold)
@@ -105,6 +124,7 @@ public class InboundMessageService(
             AiModel = classification.ModelName,
             AiPromptVersion = classification.PromptVersion,
             ExternalInboundId = request.ExternalInboundId,
+            ButtonPayload = request.ButtonPayload,
             ProcessedAt = DateTimeOffset.UtcNow
         };
         db.MessageResponses.Add(messageResponse);
@@ -114,6 +134,7 @@ public class InboundMessageService(
             : await db.CampaignRecipients.IgnoreQueryFilters().FirstOrDefaultAsync(r => r.Id == campaignRecipientId, ct);
 
         Lead? lead = null;
+        var leadCreated = false;
         var suppressed = false;
 
         switch (effective)
@@ -134,7 +155,7 @@ public class InboundMessageService(
                     prospect.Status = ProspectStatus.Lead;
                 if (recipient is not null) recipient.Status = CampaignRecipientStatus.Interested;
 
-                lead = await CreateOrReuseLeadAsync(request.OrganizationId, prospect.Id, campaignId, effective, ct);
+                (lead, leadCreated) = await CreateOrReuseLeadAsync(request.OrganizationId, prospect, campaignId, effective, ct);
                 await SendCatalogIfConfiguredAsync(request.OrganizationId, prospect, normalizedContact, ct);
                 break;
 
@@ -143,7 +164,7 @@ public class InboundMessageService(
                     prospect.Status = ProspectStatus.Lead;
                 if (recipient is not null) recipient.Status = CampaignRecipientStatus.Interested;
 
-                lead = await CreateOrReuseLeadAsync(request.OrganizationId, prospect.Id, campaignId, effective, ct);
+                (lead, leadCreated) = await CreateOrReuseLeadAsync(request.OrganizationId, prospect, campaignId, effective, ct);
                 break;
 
             default:
@@ -153,6 +174,12 @@ public class InboundMessageService(
         }
 
         await db.SaveChangesAsync(ct);
+
+        // La notificación al vendedor corre después de guardar: un envío lento o fallido de
+        // WhatsApp nunca debe demorar ni revertir la persistencia del lead. Solo se notifica en
+        // un lead genuinamente nuevo, no en cada mensaje de seguimiento de un lead ya abierto.
+        if (lead is not null && leadCreated)
+            await NotifyAssigneeAsync(lead, prospect, request.Content, ct);
 
         return Result<InboundMessageResultDto>.Success(
             new InboundMessageResultDto(messageResponse.Id, classification.Classification, classification.Confidence, lead?.Id, suppressed));
@@ -195,7 +222,12 @@ public class InboundMessageService(
         }
 
         var content = TemplateRenderer.Render(catalogTemplate.Content, prospect);
-        var sendResult = await messageProvider.SendAsync(new SendMessageRequest(MessagingChannel.Whatsapp, contact, content), ct);
+
+        // Estamos dentro de la ventana de servicio de 24hs (el prospecto acaba de escribir),
+        // así que texto libre es legal y hay que forzarlo: si no, con TemplateName configurado
+        // esto reenvía la plantilla de bienvenida en vez del catálogo real.
+        var sendResult = await messageProvider.SendAsync(
+            new SendMessageRequest(MessagingChannel.Whatsapp, contact, content, PreferFreeText: true), ct);
 
         db.Messages.Add(new Message
         {
@@ -212,25 +244,37 @@ public class InboundMessageService(
         });
     }
 
-    private async Task<Lead> CreateOrReuseLeadAsync(int organizationId, int prospectId, int? campaignId, IntentClassification classification, CancellationToken ct)
+    private async Task<(Lead Lead, bool Created)> CreateOrReuseLeadAsync(
+        int organizationId, Prospect prospect, int? campaignId, IntentClassification classification, CancellationToken ct)
     {
         var openLead = await db.Leads.IgnoreQueryFilters()
-            .Where(l => l.OrganizationId == organizationId && l.ProspectId == prospectId &&
+            .Where(l => l.OrganizationId == organizationId && l.ProspectId == prospect.Id &&
                         (l.Status == LeadStatus.New || l.Status == LeadStatus.InProgress))
             .FirstOrDefaultAsync(ct);
 
         if (openLead is not null)
         {
             openLead.LastActivityAt = DateTimeOffset.UtcNow;
-            return openLead;
+            return (openLead, false);
         }
 
-        var assignee = await LeadAssignment.PickNextAssigneeAsync(db, organizationId, ct);
+        var area = LeadRouting.AreaFor(prospect.Category);
+        var assignee = await LeadAssignment.PickNextAssigneeAsync(db, organizationId, area, ct);
+        if (assignee is null)
+        {
+            // Nunca dejar un lead sin asignar en silencio: si el área todavía no tiene
+            // usuarios, se cae al round-robin general y queda logueado para que se note.
+            assignee = await LeadAssignment.PickNextAssigneeAsync(db, organizationId, ct);
+            logger.LogWarning(
+                "[LeadAssignment] Organización {OrganizationId}: no hay usuarios activos en el área {Area}. " +
+                "El lead del prospecto {ProspectId} se asignó por round-robin general al usuario {UserId}.",
+                organizationId, area, prospect.Id, assignee);
+        }
 
         var lead = new Lead
         {
             OrganizationId = organizationId,
-            ProspectId = prospectId,
+            ProspectId = prospect.Id,
             CampaignId = campaignId,
             AssignedToUserId = assignee,
             Status = LeadStatus.New,
@@ -240,6 +284,57 @@ public class InboundMessageService(
         };
 
         db.Leads.Add(lead);
-        return lead;
+        return (lead, true);
+    }
+
+    // Avisa al vendedor/administrativo asignado por WhatsApp. Nunca debe romper el
+    // procesamiento del webhook: un fallo acá (de red, de configuración, lo que sea) solo se
+    // loguea, porque un 500 en el webhook hace que Meta reintente el mismo evento para siempre.
+    private async Task NotifyAssigneeAsync(Lead lead, Prospect prospect, string prospectMessage, CancellationToken ct)
+    {
+        try
+        {
+            if (lead.AssignedToUserId is null)
+                return;
+
+            var assignee = await db.Users.IgnoreQueryFilters()
+                .FirstOrDefaultAsync(u => u.Id == lead.AssignedToUserId.Value, ct);
+
+            if (string.IsNullOrWhiteSpace(assignee?.Phone))
+            {
+                logger.LogWarning(
+                    "[LeadHandoff] Usuario {UserId} asignado al lead {LeadId} no tiene teléfono cargado, no se pudo notificar.",
+                    lead.AssignedToUserId, lead.Id);
+                return;
+            }
+
+            var contact = ContactValueNormalizer.Normalize(ProspectContactChannel.Whatsapp, assignee.Phone);
+            var freeText = LeadHandoffMessageBuilder.BuildFreeText(prospect, prospectMessage);
+
+            // Preferir la plantilla UTILITY de handoff cuando está configurada: el usuario
+            // interno nunca le escribió al número del negocio, así que texto libre le va a
+            // fallar con error 131047 fuera de la ventana de servicio de 24hs. Sin plantilla
+            // configurada, se intenta texto libre igual (sirve en dev, no en producción).
+            var handoffTemplateName = messageProvider.HandoffTemplateName;
+            var sendRequest = string.IsNullOrWhiteSpace(handoffTemplateName)
+                ? new SendMessageRequest(MessagingChannel.Whatsapp, contact, freeText, PreferFreeText: true)
+                : new SendMessageRequest(
+                    MessagingChannel.Whatsapp, contact, freeText,
+                    TemplateNameOverride: handoffTemplateName,
+                    TemplateParameters: LeadHandoffMessageBuilder.BuildTemplateParameters(prospect, prospectMessage));
+
+            var sendResult = await messageProvider.SendAsync(sendRequest, ct);
+
+            if (!sendResult.Success)
+            {
+                logger.LogWarning(
+                    "[LeadHandoff] No se pudo notificar al usuario {UserId} sobre el lead {LeadId}: {Error}",
+                    lead.AssignedToUserId, lead.Id, sendResult.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "[LeadHandoff] Error inesperado notificando el lead {LeadId}.", lead.Id);
+        }
     }
 }

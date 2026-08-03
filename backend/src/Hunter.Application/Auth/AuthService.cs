@@ -26,7 +26,10 @@ public class AuthService(IHunterDbContext db, IPasswordHasher passwordHasher, IJ
             Organization = organization,
             FirstName = request.OwnerFirstName.Trim(),
             LastName = request.OwnerLastName.Trim(),
-            Email = request.OwnerEmail.Trim().ToLowerInvariant()
+            Email = request.OwnerEmail.Trim().ToLowerInvariant(),
+            // Una organización de una sola persona tiene que recibir sus propios leads
+            // desde el arranque, sin depender de que alguien configure áreas primero.
+            Area = UserArea.Ventas
         };
         user.PasswordHash = passwordHasher.Hash(user, request.Password);
 

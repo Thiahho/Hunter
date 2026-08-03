@@ -1,4 +1,5 @@
 using Hunter.Domain.Campaigning;
+using Hunter.Domain.Identity;
 using Hunter.Tests.TestSupport;
 using Microsoft.EntityFrameworkCore.Metadata;
 
@@ -38,5 +39,24 @@ public class EntityConfigurationTests
 
         Assert.NotNull(index);
         Assert.True(index!.IsUnique);
+    }
+
+    [Fact]
+    public void User_Area_Is_Persisted_As_String_With_Max_Length_And_Indexed()
+    {
+        using var db = TestDb.Create(TestDb.NewDbName());
+
+        var entityType = db.Model.FindEntityType(typeof(User))!;
+        var areaProperty = entityType.FindProperty(nameof(User.Area))!;
+
+        Assert.Equal(typeof(string), areaProperty.GetProviderClrType());
+        Assert.Equal(20, areaProperty.GetMaxLength());
+
+        var index = entityType.GetIndexes()
+            .SingleOrDefault(i => i.Properties.Select(p => p.Name).SequenceEqual([
+                nameof(User.OrganizationId), nameof(User.Area)
+            ]));
+
+        Assert.NotNull(index);
     }
 }

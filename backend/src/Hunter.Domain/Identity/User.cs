@@ -14,6 +14,7 @@ public class User : Entity
     public string? Phone { get; set; }
     public string PasswordHash { get; set; } = null!;
     public bool IsActive { get; set; } = true;
+    public UserArea Area { get; set; } = UserArea.Unassigned;
 
     public ICollection<UserRole> UserRoles { get; set; } = new List<UserRole>();
     public ICollection<RefreshToken> RefreshTokens { get; set; } = new List<RefreshToken>();

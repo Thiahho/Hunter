@@ -1,6 +1,8 @@
 using Hunter.Application.Auth.Contracts;
 using Hunter.Application.Common;
+using Hunter.Application.Prospecting;
 using Hunter.Domain.Identity;
+using Hunter.Domain.Prospecting;
 using Hunter.Shared;
 using Microsoft.EntityFrameworkCore;
 
@@ -38,7 +40,11 @@ public class UserService(IHunterDbContext db, IPasswordHasher passwordHasher) : 
             OrganizationId = organizationId,
             FirstName = request.FirstName.Trim(),
             LastName = request.LastName.Trim(),
-            Email = request.Email.Trim().ToLowerInvariant()
+            Email = request.Email.Trim().ToLowerInvariant(),
+            Phone = string.IsNullOrWhiteSpace(request.Phone)
+                ? null
+                : ContactValueNormalizer.Normalize(ProspectContactChannel.Whatsapp, request.Phone),
+            Area = request.Area
         };
         user.PasswordHash = passwordHasher.Hash(user, request.Password);
 
@@ -49,6 +55,34 @@ public class UserService(IHunterDbContext db, IPasswordHasher passwordHasher) : 
         await db.SaveChangesAsync(ct);
 
         return Result<UserDto>.Success(ToDto(user, [request.Role.Trim().ToUpperInvariant()]));
+    }
+
+    public async Task<Result<UserDto>> UpdateAsync(int organizationId, int userId, UpdateUserRequest request, CancellationToken ct = default)
+    {
+        var user = await db.Users
+            .IgnoreQueryFilters()
+            .Include(u => u.UserRoles).ThenInclude(ur => ur.Role)
+            .FirstOrDefaultAsync(u => u.Id == userId && u.OrganizationId == organizationId, ct);
+
+        if (user is null)
+            return Result<UserDto>.Failure("Usuario no encontrado.");
+
+        if (request.Phone is not null)
+        {
+            user.Phone = string.IsNullOrWhiteSpace(request.Phone)
+                ? null
+                : ContactValueNormalizer.Normalize(ProspectContactChannel.Whatsapp, request.Phone);
+        }
+
+        if (request.Area is not null)
+            user.Area = request.Area.Value;
+
+        if (request.IsActive is not null)
+            user.IsActive = request.IsActive.Value;
+
+        await db.SaveChangesAsync(ct);
+
+        return Result<UserDto>.Success(ToDto(user, user.UserRoles.Select(ur => ur.Role.Name).ToList()));
     }
 
     private async Task<string?> ValidateAsync(int organizationId, CreateUserRequest request, CancellationToken ct)
@@ -71,5 +105,5 @@ public class UserService(IHunterDbContext db, IPasswordHasher passwordHasher) : 
     }
 
     private static UserDto ToDto(User user, IReadOnlyCollection<string> roles) =>
-        new(user.Id, user.FirstName, user.LastName, user.Email, user.IsActive, roles);
+        new(user.Id, user.FirstName, user.LastName, user.Email, user.IsActive, roles, user.Phone, user.Area);
 }

@@ -96,20 +96,30 @@ public class WebhooksController(
             return BadRequest();
         }
 
-        var messages = payload?.Entry
+        var rawMessages = payload?.Entry
             .SelectMany(e => e.Changes)
             .Select(c => c.Value)
             .Where(v => v?.Messages is not null)
-            .SelectMany(v => v!.Messages!)
-            .Where(m => m.Type == "text" && m.Text is not null) ?? [];
+            .SelectMany(v => v!.Messages!) ?? [];
 
-        foreach (var message in messages)
+        foreach (var raw in rawMessages)
         {
+            var message = WhatsAppInboundExtractor.TryExtract(raw);
+            if (message is null)
+            {
+                // Antes esto se descartaba en silencio para cualquier tipo != "text" (incluidos
+                // los taps de botón). Con LogDebug al menos queda rastro del body crudo.
+                logger.LogDebug("[WhatsApp webhook] Mensaje {MessageId} de tipo {Type} no reconocido, se ignora.", raw.Id, raw.Type);
+                continue;
+            }
+
             var request = new InboundMessageRequest(
                 options.OrganizationId.Value,
                 message.From,
-                message.Text!.Body,
-                ExternalInboundId: message.Id);
+                message.Content,
+                ExternalInboundId: message.Id,
+                ExternalMessageId: message.ContextMessageId,
+                ButtonPayload: message.ButtonPayload);
 
             var result = await inboundMessageService.ProcessAsync(request, ct);
             if (!result.Succeeded)

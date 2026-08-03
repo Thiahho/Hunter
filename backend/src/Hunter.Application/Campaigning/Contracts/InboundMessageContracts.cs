@@ -8,7 +8,8 @@ public record InboundMessageRequest(
     string Content,
     DateTimeOffset? ReceivedAt = null,
     string? ExternalInboundId = null,
-    string? ExternalMessageId = null);
+    string? ExternalMessageId = null,
+    string? ButtonPayload = null);
 
 public record InboundMessageResultDto(
     int MessageResponseId,

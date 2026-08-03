@@ -22,7 +22,10 @@
     "OrganizationId": 1,
     "TemplateName": "",
     "TemplateBodyParameterCount": 1,
-    "TemplateSecondParameter": ""
+    "TemplateSecondParameter": "",
+    "TemplateQuickReplyPayloads": ["ESTOY_INTERESADO"],
+    "HandoffTemplateName": "",
+    "HandoffTemplateLanguage": "es"
   },
   "GooglePlaces": {
     "ApiKey": "CHANGE_ME_GOOGLE_PLACES_API_KEY"

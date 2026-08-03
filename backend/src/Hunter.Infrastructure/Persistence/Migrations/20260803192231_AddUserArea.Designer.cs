@@ -3,6 +3,7 @@ using System;
 using Hunter.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Hunter.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(HunterDbContext))]
-    partial class HunterDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260803192231_AddUserArea")]
+    partial class AddUserArea
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -303,11 +306,6 @@ namespace Hunter.Infrastructure.Persistence.Migrations
                         .HasMaxLength(50)
                         .HasColumnType("character varying(50)")
                         .HasColumnName("ai_prompt_version");
-
-                    b.Property<string>("ButtonPayload")
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
-                        .HasColumnName("button_payload");
 
                     b.Property<int?>("CampaignId")
                         .HasColumnType("integer")

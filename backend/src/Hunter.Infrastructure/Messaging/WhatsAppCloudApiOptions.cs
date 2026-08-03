@@ -33,5 +33,19 @@ public class WhatsAppCloudApiOptions
     // organización (no varía por prospecto), ej. el link al catálogo.
     public string? TemplateSecondParameter { get; set; }
 
+    // Payloads de los botones quick_reply de TemplateName, EN EL MISMO ORDEN en que Meta los
+    // aprobó (index 0, 1, ...). Vacío = plantilla sin botones dinámicos. Hoy es un solo botón
+    // genérico de interés ("Estoy interesado" -> QuickReplyPayloads.Interested), pero se deja
+    // como lista (no un único string) para no tener que romper esta config si más adelante
+    // se agrega algún otro botón.
+    public IList<string> TemplateQuickReplyPayloads { get; set; } = [];
+
+    // Plantilla UTILITY separada para notificar al vendedor/administrativo asignado
+    // (SendMessageRequest.TemplateNameOverride). Necesaria porque el usuario interno nunca le
+    // escribió al número del negocio: texto libre le falla con error 131047 fuera de la
+    // ventana de 24hs. Vacío = se manda texto libre igual (falla en producción, sirve en dev).
+    public string? HandoffTemplateName { get; set; }
+    public string HandoffTemplateLanguage { get; set; } = "es";
+
     public bool IsConfigured => !string.IsNullOrWhiteSpace(PhoneNumberId) && !string.IsNullOrWhiteSpace(AccessToken);
 }
