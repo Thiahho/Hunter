@@ -2,7 +2,10 @@ using Hunter.Domain.Campaigning;
 
 namespace Hunter.Application.Campaigning;
 
-public record SendMessageRequest(MessagingChannel Channel, string ToContact, string Content);
+// RecipientName es el valor dinámico para plantillas con parámetro de nombre (ej. {{1}} en
+// "bienvenida_general"); si no se manda, se usa Content como fallback (compat con plantillas
+// de un solo parámetro donde Content es el mensaje completo).
+public record SendMessageRequest(MessagingChannel Channel, string ToContact, string Content, string? RecipientName = null);
 
 public record SendMessageResult(bool Success, string? ExternalMessageId, string? Error);
 

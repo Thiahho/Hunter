@@ -32,7 +32,8 @@ services:
       WhatsAppCloudApi__WebhookVerifyToken: ${WHATSAPP_WEBHOOK_VERIFY_TOKEN:-}
       WhatsAppCloudApi__TemplateName: ${WHATSAPP_TEMPLATE_NAME:-}
       WhatsAppCloudApi__TemplateLanguage: ${WHATSAPP_TEMPLATE_LANGUAGE:-es}
-      WhatsAppCloudApi__TemplateHasBodyParameter: ${WHATSAPP_TEMPLATE_HAS_BODY_PARAMETER:-true}
+      WhatsAppCloudApi__TemplateBodyParameterCount: ${WHATSAPP_TEMPLATE_BODY_PARAMETER_COUNT:-1}
+      WhatsAppCloudApi__TemplateSecondParameter: ${WHATSAPP_TEMPLATE_SECOND_PARAMETER:-}
       GooglePlaces__ApiKey: ${GOOGLE_PLACES_API_KEY:-}
       Cors__AllowedOrigins__0: ${CORS_ALLOWED_ORIGIN:-http://localhost:5173}
     ports:

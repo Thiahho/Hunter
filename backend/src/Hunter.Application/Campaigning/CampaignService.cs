@@ -225,7 +225,8 @@ public class CampaignService(
             }
 
             var content = TemplateRenderer.Render(campaign.MessageTemplate.Content, recipient.Prospect);
-            var sendResult = await messageProvider.SendAsync(new SendMessageRequest(campaign.Channel, contact.Value, content), ct);
+            var sendResult = await messageProvider.SendAsync(
+                new SendMessageRequest(campaign.Channel, contact.Value, content, recipient.Prospect.BusinessName), ct);
 
             var message = new Message
             {

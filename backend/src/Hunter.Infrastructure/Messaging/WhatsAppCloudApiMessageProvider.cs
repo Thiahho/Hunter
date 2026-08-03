@@ -25,7 +25,7 @@ public class WhatsAppCloudApiMessageProvider(
 
         var opts = options.Value;
         var toContact = ToMetaWhatsAppFormat(request.ToContact);
-        var payload = BuildPayload(opts, toContact, request.Content);
+        var payload = BuildPayload(opts, toContact, request);
 
         try
         {
@@ -65,45 +65,36 @@ public class WhatsAppCloudApiMessageProvider(
             : normalizedPhone;
     }
 
-    private static object BuildPayload(WhatsAppCloudApiOptions opts, string to, string content)
+    private static object BuildPayload(WhatsAppCloudApiOptions opts, string to, SendMessageRequest request)
     {
-        if (!string.IsNullOrWhiteSpace(opts.TemplateName) && opts.TemplateHasBodyParameter)
-        {
-            return new
-            {
-                messaging_product = "whatsapp",
-                to,
-                type = "template",
-                template = new
-                {
-                    name = opts.TemplateName,
-                    language = new { code = opts.TemplateLanguage },
-                    components = new object[]
-                    {
-                        new
-                        {
-                            type = "body",
-                            parameters = new object[] { new { type = "text", text = content } }
-                        }
-                    }
-                }
-            };
-        }
-
         if (!string.IsNullOrWhiteSpace(opts.TemplateName))
         {
-            // Plantilla aprobada sin variables: Meta rechaza el envío con (#132000) si se manda
-            // el objeto "components" cuando la plantilla no tiene ningún parámetro esperado.
+            var bodyParameters = BuildTemplateBodyParameters(opts, request);
+
             return new
             {
                 messaging_product = "whatsapp",
                 to,
                 type = "template",
-                template = new
-                {
-                    name = opts.TemplateName,
-                    language = new { code = opts.TemplateLanguage }
-                }
+                template = bodyParameters is null
+                    ? new
+                    {
+                        name = opts.TemplateName,
+                        language = new { code = opts.TemplateLanguage }
+                    }
+                    : (object)new
+                    {
+                        name = opts.TemplateName,
+                        language = new { code = opts.TemplateLanguage },
+                        components = new object[]
+                        {
+                            new
+                            {
+                                type = "body",
+                                parameters = bodyParameters.Select(p => new { type = "text", text = p }).ToArray()
+                            }
+                        }
+                    }
             };
         }
 
@@ -114,9 +105,21 @@ public class WhatsAppCloudApiMessageProvider(
             messaging_product = "whatsapp",
             to,
             type = "text",
-            text = new { body = content }
+            text = new { body = request.Content }
         };
     }
+
+    // Meta rechaza el envío con (#132000) si la cantidad de parámetros no coincide EXACTO
+    // con lo aprobado para la plantilla, de ahí la necesidad de configurarla por plantilla.
+    private static string[]? BuildTemplateBodyParameters(WhatsAppCloudApiOptions opts, SendMessageRequest request) =>
+        opts.TemplateBodyParameterCount switch
+        {
+            0 => null,
+            1 => new[] { request.RecipientName ?? request.Content },
+            2 => new[] { request.RecipientName ?? request.Content, opts.TemplateSecondParameter ?? string.Empty },
+            _ => throw new InvalidOperationException(
+                $"WhatsAppCloudApi:TemplateBodyParameterCount = {opts.TemplateBodyParameterCount} no soportado (valores válidos: 0, 1 o 2).")
+        };
 
     private static string? TryParseError(string body)
     {

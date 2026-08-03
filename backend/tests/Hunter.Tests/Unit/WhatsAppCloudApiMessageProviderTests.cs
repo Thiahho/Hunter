@@ -122,7 +122,7 @@ public class WhatsAppCloudApiMessageProviderTests
             AccessToken = "token",
             TemplateName = "bienvenida_general",
             TemplateLanguage = "es_AR",
-            TemplateHasBodyParameter = false
+            TemplateBodyParameterCount = 0
         });
 
         var result = await provider.SendAsync(new SendMessageRequest(MessagingChannel.Whatsapp, "5491112345678", "contenido"));
@@ -133,6 +133,33 @@ public class WhatsAppCloudApiMessageProviderTests
         Assert.Equal("template", doc.RootElement.GetProperty("type").GetString());
         Assert.Equal("bienvenida_general", doc.RootElement.GetProperty("template").GetProperty("name").GetString());
         Assert.False(doc.RootElement.GetProperty("template").TryGetProperty("components", out _));
+    }
+
+    [Fact]
+    public async Task SendAsync_TemplateWithTwoBodyParameters_SendsNameAndStaticSecondParameter()
+    {
+        var handler = new FakeHttpMessageHandler(HttpStatusCode.OK,
+            """{"messages":[{"id":"wamid.TWOPARAMS"}]}""");
+        var provider = CreateProvider(handler, new WhatsAppCloudApiOptions
+        {
+            PhoneNumberId = "123",
+            AccessToken = "token",
+            TemplateName = "bienvenida_general",
+            TemplateLanguage = "es_AR",
+            TemplateBodyParameterCount = 2,
+            TemplateSecondParameter = "https://www.tauroparts.shop/catalog"
+        });
+
+        var result = await provider.SendAsync(new SendMessageRequest(
+            MessagingChannel.Whatsapp, "5491112345678", "contenido libre", "Ferretería Sur"));
+
+        Assert.True(result.Success);
+
+        using var doc = JsonDocument.Parse(handler.LastRequestBody!);
+        var parameters = doc.RootElement.GetProperty("template").GetProperty("components")[0].GetProperty("parameters");
+        Assert.Equal(2, parameters.GetArrayLength());
+        Assert.Equal("Ferretería Sur", parameters[0].GetProperty("text").GetString());
+        Assert.Equal("https://www.tauroparts.shop/catalog", parameters[1].GetProperty("text").GetString());
     }
 
     [Fact]
