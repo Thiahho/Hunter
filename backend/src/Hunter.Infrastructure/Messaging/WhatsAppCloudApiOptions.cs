@@ -23,10 +23,15 @@ public class WhatsAppCloudApiOptions
     public string? TemplateName { get; set; }
     public string TemplateLanguage { get; set; } = "es";
 
-    // Algunas plantillas se aprueban sin variables (texto 100% estático, ej. "bienvenida_general").
     // Meta rechaza el envío con (#132000) si el número de parámetros no coincide EXACTO con lo
-    // aprobado, así que hay que poder desactivar el parámetro del body por plantilla.
-    public bool TemplateHasBodyParameter { get; set; } = true;
+    // aprobado en la plantilla, así que hay que poder configurar cuántos espera cada una: 0
+    // (texto 100% estático), 1 (solo el nombre del prospecto) o 2 (nombre + un valor fijo,
+    // ej. "bienvenida_general": {{1}}=nombre del negocio, {{2}}=link al catálogo).
+    public int TemplateBodyParameterCount { get; set; } = 1;
+
+    // Segundo parámetro del body cuando TemplateBodyParameterCount = 2. Es un valor fijo por
+    // organización (no varía por prospecto), ej. el link al catálogo.
+    public string? TemplateSecondParameter { get; set; }
 
     public bool IsConfigured => !string.IsNullOrWhiteSpace(PhoneNumberId) && !string.IsNullOrWhiteSpace(AccessToken);
 }

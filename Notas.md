@@ -14,7 +14,8 @@ Sección `WhatsAppCloudApi` en `backend/src/Hunter.Api/appsettings.Development.j
 | `WebhookVerifyToken` | Lo inventás vos; va en `appsettings` **y** en Meta al dar de alta el webhook (mismo valor en los dos lados) |
 | `OrganizationId` | El ID de la organización en Hunter — el payload de Meta no dice a qué org pertenece el mensaje, V1 asume un solo número = una sola org |
 | `TemplateName` | Opcional al inicio — solo hace falta para **iniciar** conversaciones en frío. Para responder dentro de la ventana de 24hs de un mensaje entrante no se necesita |
-| `TemplateHasBodyParameter` | `true` por defecto (plantilla con `{{1}}` en el body). Poner en `false` si la plantilla se aprobó sin variables (texto 100% estático) — si no, Meta rechaza el envío con `(#132000) Number of parameters does not match the expected number of params` |
+| `TemplateBodyParameterCount` | Cuántas variables `{{n}}` tiene el body de la plantilla aprobada: `0` (texto 100% estático), `1` (default, solo `{{1}}`=nombre del prospecto) o `2` (`{{1}}`=nombre + `{{2}}`=`TemplateSecondParameter`). Si no coincide EXACTO con lo aprobado en Meta, rechaza el envío con `(#132000) Number of parameters does not match the expected number of params` |
+| `TemplateSecondParameter` | Solo si `TemplateBodyParameterCount=2`: valor fijo para `{{2}}` (no varía por prospecto), ej. el link al catálogo |
 
 Bloqueante a tener en cuenta: Meta necesita pegarle a una URL pública HTTPS
 (`https://tu-dominio/api/v1/webhooks/messaging/whatsapp`) — no le puede hablar a `localhost`.
