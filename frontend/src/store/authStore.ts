@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { createJSONStorage, persist } from 'zustand/middleware';
 
 export interface CurrentUser {
   id: number;
@@ -27,6 +27,9 @@ export const useAuthStore = create<AuthState>()(
       setSession: ({ accessToken, refreshToken, user }) => set({ accessToken, refreshToken, user }),
       clearSession: () => set({ accessToken: null, refreshToken: null, user: null }),
     }),
-    { name: 'hunter-auth' },
+    {
+      name: 'hunter-auth',
+      storage: createJSONStorage(() => sessionStorage),
+    },
   ),
 );
