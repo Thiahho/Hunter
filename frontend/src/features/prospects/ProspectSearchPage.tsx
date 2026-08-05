@@ -145,6 +145,7 @@ export function ProspectSearchPage() {
   const [selectedCategories, setSelectedCategories] = useState<ProspectCategory[]>([]);
   const [keywords, setKeywords] = useState<string[]>([]);
   const [categoryInput, setCategoryInput] = useState('');
+  const [apifyKeywordInput, setApifyKeywordInput] = useState('');
   const [localityInput, setLocalityInput] = useState('');
   const [provinceInput, setProvinceInput] = useState('');
   const [localities, setLocalities] = useState<string[]>([]);
@@ -317,6 +318,24 @@ export function ProspectSearchPage() {
     );
   }
 
+  // A diferencia del input libre de OSM (resolveCategoryFromText, detrás de FREE_TEXT_RUBRO_ENABLED),
+  // acá no hace falta resolver contra sinónimos de categoría: Apify busca todo por texto contra
+  // Google Maps, así que cualquier término que se escriba se agrega directo como keyword.
+  function addApifyKeyword() {
+    const trimmed = apifyKeywordInput.trim();
+    if (trimmed) {
+      setKeywords((prev) => (prev.includes(trimmed) ? prev : [...prev, trimmed]));
+    }
+    setApifyKeywordInput('');
+  }
+
+  function handleApifyKeywordKeyDown(event: KeyboardEvent<HTMLInputElement>) {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      addApifyKeyword();
+    }
+  }
+
   function addLocality() {
     const trimmed = localityInput.trim();
     if (trimmed && !localities.includes(trimmed) && localities.length < MAX_LOCALITIES) {
@@ -479,6 +498,25 @@ export function ProspectSearchPage() {
               Mayorista (Suspensión / Tren delantero)
             </button>
           </div>
+          {source === 'apify' && (
+            <div className="mt-2 flex gap-2">
+              <input
+                type="text"
+                value={apifyKeywordInput}
+                onChange={(e) => setApifyKeywordInput(e.target.value)}
+                onKeyDown={handleApifyKeywordKeyDown}
+                placeholder="Otro rubro (ej. concesionaria, distribuidora de frenos)"
+                className={inputClass}
+              />
+              <button
+                type="button"
+                onClick={addApifyKeyword}
+                className="mt-1 shrink-0 rounded-md border border-slate-300 dark:border-slate-700 px-3 py-2 text-sm font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+              >
+                Agregar
+              </button>
+            </div>
+          )}
           {FREE_TEXT_RUBRO_ENABLED && (
             <div className="mt-2 flex gap-2">
               <input
@@ -541,7 +579,11 @@ export function ProspectSearchPage() {
               ))}
             </div>
           )}
-          <p className="mt-1 text-xs text-slate-400">Elegí al menos uno de los dos rubros para poder buscar.</p>
+          <p className="mt-1 text-xs text-slate-400">
+            {source === 'apify'
+              ? 'Elegí uno de los botones o escribí cualquier otro rubro (se busca tal cual en Google Maps). Hace falta al menos uno.'
+              : 'Elegí al menos uno de los dos rubros para poder buscar.'}
+          </p>
         </div>
 
         <div>
