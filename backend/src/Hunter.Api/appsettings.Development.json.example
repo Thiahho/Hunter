@@ -21,14 +21,34 @@
     "WebhookVerifyToken": "CHANGE_ME",
     "OrganizationId": 1,
     "TemplateName": "",
+    "TemplateLanguage": "es_AR",
     "TemplateBodyParameterCount": 1,
     "TemplateSecondParameter": "",
     "TemplateQuickReplyPayloads": ["ESTOY_INTERESADO"],
     "HandoffTemplateName": "",
-    "HandoffTemplateLanguage": "es"
+    "HandoffTemplateLanguage": "es_AR"
   },
   "GooglePlaces": {
     "ApiKey": "CHANGE_ME_GOOGLE_PLACES_API_KEY"
+  },
+  "CampaignQueue": {
+    "Enabled": false,
+    "PollIntervalSeconds": 60
+  },
+  "OpenStreetMap": {
+    "Endpoint": "https://overpass-api.de/api/interpreter",
+    "UserAgent": "HunterCRM/1.0 (contact: thiagobrizuelav@gmail.com)",
+    "TimeoutSeconds": 60
+  },
+  "Nominatim": {
+    "Endpoint": "https://nominatim.openstreetmap.org/search",
+    "UserAgent": "HunterCRM/1.0 (contact: thiagobrizuelav@gmail.com)",
+    "TimeoutSeconds": 10
+  },
+  "Telegram": {
+    "BotToken": "CHANGE_ME_TELEGRAM_BOT_TOKEN",
+    "BotUsername": "CHANGE_ME_TELEGRAM_BOT_USERNAME",
+    "WebhookSecret": "CHANGE_ME_TELEGRAM_WEBHOOK_SECRET"
   },
   "Serilog": {
     "MinimumLevel": {

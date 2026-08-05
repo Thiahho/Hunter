@@ -3,6 +3,7 @@ using System;
 using Hunter.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Hunter.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(HunterDbContext))]
-    partial class HunterDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260805052353_AddUserTelegramChatId")]
+    partial class AddUserTelegramChatId
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -873,15 +876,6 @@ namespace Hunter.Infrastructure.Persistence.Migrations
                         .HasMaxLength(30)
                         .HasColumnType("character varying(30)")
                         .HasColumnName("telegram_chat_id");
-
-                    b.Property<string>("TelegramLinkCode")
-                        .HasMaxLength(64)
-                        .HasColumnType("character varying(64)")
-                        .HasColumnName("telegram_link_code");
-
-                    b.Property<DateTimeOffset?>("TelegramLinkCodeExpiresAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("telegram_link_code_expires_at");
 
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .HasColumnType("timestamp with time zone")

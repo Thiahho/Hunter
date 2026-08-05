@@ -1,0 +1,367 @@
+import { useEffect, useState, type FormEvent, type KeyboardEvent } from 'react';
+import { useMutation, useQuery } from '@tanstack/react-query';
+import { Link } from 'react-router';
+import type { ProspectCategory } from '../../api/prospects';
+import {
+  cancelImport,
+  confirmImport,
+  getImportRecords,
+  searchOpenStreetMap,
+  type ImportConfirmResultDto,
+  type ImportPreviewDto,
+} from '../../api/imports';
+
+// Único subconjunto de ProspectCategory con equivalente buscable en OpenStreetMap
+// (OpenStreetMapCategories.Supported en el backend). Sin label compartido a propósito: sigue
+// el mismo patrón que categoryLabels/statusLabels en ProspectsListPage (duplicado por página).
+const categoryOptions: { value: ProspectCategory; label: string }[] = [
+  { value: 'AutoPartsStore', label: 'Repuestería' },
+  { value: 'Workshop', label: 'Taller' },
+  { value: 'Lubricentro', label: 'Lubricentro' },
+  { value: 'TireShop', label: 'Gomería' },
+  { value: 'Reseller', label: 'Concesionaria / reventa' },
+];
+
+const MAX_LOCALITIES = 5;
+
+const inputClass =
+  'mt-1 w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-slate-900 dark:text-slate-100';
+
+export function ProspectSearchPage() {
+  const [selectedCategories, setSelectedCategories] = useState<ProspectCategory[]>([]);
+  const [localityInput, setLocalityInput] = useState('');
+  const [localities, setLocalities] = useState<string[]>([]);
+  const [useRadius, setUseRadius] = useState(false);
+  const [radiusKm, setRadiusKm] = useState(10);
+  const [maxResults, setMaxResults] = useState(50);
+
+  const [preview, setPreview] = useState<ImportPreviewDto | null>(null);
+  const [batchId, setBatchId] = useState<number | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [lastResult, setLastResult] = useState<ImportConfirmResultDto | null>(null);
+
+  const searchMutation = useMutation({
+    mutationFn: searchOpenStreetMap,
+    onSuccess: (result) => {
+      setLastResult(null);
+      setPreview(result);
+      setBatchId(result.batchId);
+    },
+  });
+
+  const recordsQuery = useQuery({
+    queryKey: ['import-records', batchId],
+    queryFn: () => getImportRecords(batchId!),
+    enabled: batchId !== null,
+  });
+
+  useEffect(() => {
+    if (recordsQuery.data) {
+      setSelectedIds(new Set(recordsQuery.data.filter((r) => r.status === 'Valid').map((r) => r.id)));
+    }
+  }, [recordsQuery.data]);
+
+  const confirmMutation = useMutation({
+    mutationFn: () => confirmImport(batchId!, [...selectedIds]),
+    onSuccess: (result) => {
+      setLastResult(result);
+      resetSearch();
+    },
+  });
+
+  const cancelMutation = useMutation({
+    mutationFn: () => cancelImport(batchId!),
+    onSuccess: () => resetSearch(),
+  });
+
+  function resetSearch() {
+    setBatchId(null);
+    setPreview(null);
+    setSelectedIds(new Set());
+  }
+
+  function toggleCategory(category: ProspectCategory) {
+    setSelectedCategories((prev) =>
+      prev.includes(category) ? prev.filter((c) => c !== category) : [...prev, category],
+    );
+  }
+
+  function addLocality() {
+    const trimmed = localityInput.trim();
+    if (trimmed && !localities.includes(trimmed) && localities.length < MAX_LOCALITIES) {
+      setLocalities((prev) => [...prev, trimmed]);
+    }
+    setLocalityInput('');
+  }
+
+  function handleLocalityKeyDown(event: KeyboardEvent<HTMLInputElement>) {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      addLocality();
+    }
+  }
+
+  function removeLocality(name: string) {
+    setLocalities((prev) => prev.filter((l) => l !== name));
+  }
+
+  function toggleRecord(id: number) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function handleSubmit(event: FormEvent) {
+    event.preventDefault();
+    if (localities.length === 0) return;
+
+    searchMutation.mutate({
+      localities,
+      categories: selectedCategories.length > 0 ? selectedCategories : undefined,
+      radiusKm: useRadius ? radiusKm : undefined,
+      maxResults,
+    });
+  }
+
+  const records = recordsQuery.data ?? [];
+  const selectableRecords = records.filter((r) => r.status === 'Valid');
+
+  return (
+    <div className="max-w-4xl space-y-4">
+      <div>
+        <Link to="/app/prospects" className="text-sm text-indigo-600 dark:text-indigo-400 hover:underline">
+          ← Volver a prospectos
+        </Link>
+        <h2 className="mt-2 text-lg font-semibold text-slate-900 dark:text-slate-100">Buscar prospectos (OpenStreetMap)</h2>
+        <p className="text-sm text-slate-500 dark:text-slate-400">
+          Buscá negocios por rubro y zona. Revisá los resultados y elegí cuáles importar como prospectos.
+        </p>
+      </div>
+
+      {lastResult && (
+        <p className="rounded-md border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-900/20 px-3 py-2 text-sm text-emerald-700 dark:text-emerald-300">
+          Se importaron {lastResult.created} prospecto(s).
+        </p>
+      )}
+
+      <form
+        onSubmit={handleSubmit}
+        className="space-y-4 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5"
+      >
+        <div>
+          <span className="block text-sm font-medium text-slate-700 dark:text-slate-300">Rubro</span>
+          <div className="mt-1 flex flex-wrap gap-3">
+            {categoryOptions.map((option) => (
+              <label key={option.value} className="flex items-center gap-1.5 text-sm text-slate-700 dark:text-slate-300">
+                <input
+                  type="checkbox"
+                  checked={selectedCategories.includes(option.value)}
+                  onChange={() => toggleCategory(option.value)}
+                  className="rounded border-slate-300 dark:border-slate-700"
+                />
+                {option.label}
+              </label>
+            ))}
+          </div>
+          <p className="mt-1 text-xs text-slate-400">Sin selección = se buscan todos los rubros.</p>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
+            Zonas o localidades (máx. {MAX_LOCALITIES})
+          </label>
+          <div className="mt-1 flex gap-2">
+            <input
+              type="text"
+              value={localityInput}
+              onChange={(e) => setLocalityInput(e.target.value)}
+              onKeyDown={handleLocalityKeyDown}
+              disabled={localities.length >= MAX_LOCALITIES}
+              placeholder="ej. Moreno"
+              className={inputClass}
+            />
+            <button
+              type="button"
+              onClick={addLocality}
+              disabled={localities.length >= MAX_LOCALITIES}
+              className="mt-1 shrink-0 rounded-md border border-slate-300 dark:border-slate-700 px-3 py-2 text-sm font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-40"
+            >
+              Agregar
+            </button>
+          </div>
+          {localities.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-2">
+              {localities.map((locality) => (
+                <span
+                  key={locality}
+                  className="flex items-center gap-1 rounded-full bg-indigo-50 dark:bg-indigo-500/10 px-3 py-1 text-xs font-medium text-indigo-700 dark:text-indigo-300"
+                >
+                  {locality}
+                  <button
+                    type="button"
+                    onClick={() => removeLocality(locality)}
+                    className="text-indigo-500 hover:text-indigo-800 dark:hover:text-indigo-100"
+                    aria-label={`Quitar ${locality}`}
+                  >
+                    ×
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="flex flex-wrap items-end gap-4">
+          <div>
+            <label className="flex items-center gap-1.5 text-sm font-medium text-slate-700 dark:text-slate-300">
+              <input
+                type="checkbox"
+                checked={useRadius}
+                onChange={(e) => setUseRadius(e.target.checked)}
+                className="rounded border-slate-300 dark:border-slate-700"
+              />
+              Buscar por radio
+            </label>
+            {useRadius && (
+              <input
+                type="number"
+                min={1}
+                max={50}
+                value={radiusKm}
+                onChange={(e) => setRadiusKm(Number(e.target.value))}
+                className={`${inputClass} w-28`}
+              />
+            )}
+            {useRadius && <p className="mt-1 text-xs text-slate-400">km alrededor de cada localidad</p>}
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Máximo de resultados</label>
+            <input
+              type="number"
+              min={1}
+              max={300}
+              value={maxResults}
+              onChange={(e) => setMaxResults(Number(e.target.value))}
+              className={`${inputClass} w-28`}
+            />
+          </div>
+        </div>
+
+        {searchMutation.isError && (
+          <p className="text-sm text-red-600 dark:text-red-400">
+            {searchMutation.error instanceof Error ? searchMutation.error.message : 'Ocurrió un error inesperado.'}
+          </p>
+        )}
+
+        <button
+          type="submit"
+          disabled={searchMutation.isPending || localities.length === 0}
+          className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-60"
+        >
+          {searchMutation.isPending ? 'Buscando…' : 'Buscar'}
+        </button>
+      </form>
+
+      {recordsQuery.isLoading && <p className="text-sm text-slate-500 dark:text-slate-400">Cargando resultados...</p>}
+
+      {recordsQuery.isError && (
+        <p className="text-sm text-red-600 dark:text-red-400">
+          {recordsQuery.error instanceof Error ? recordsQuery.error.message : 'No se pudieron cargar los resultados.'}
+        </p>
+      )}
+
+      {preview && recordsQuery.data && (
+        <div className="space-y-3 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5">
+          <p className="text-sm text-slate-500 dark:text-slate-400">
+            {preview.validRecords} válidos · {preview.duplicateRecords} duplicados · {preview.invalidRecords} inválidos
+          </p>
+
+          <div className="overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-800">
+            <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-800 text-sm">
+              <thead className="bg-slate-50 dark:bg-slate-900">
+                <tr>
+                  <th className="px-3 py-2 text-left font-medium text-slate-500 dark:text-slate-400"></th>
+                  <th className="px-3 py-2 text-left font-medium text-slate-500 dark:text-slate-400">Nombre</th>
+                  <th className="px-3 py-2 text-left font-medium text-slate-500 dark:text-slate-400">Rubro</th>
+                  <th className="px-3 py-2 text-left font-medium text-slate-500 dark:text-slate-400">Teléfono</th>
+                  <th className="px-3 py-2 text-left font-medium text-slate-500 dark:text-slate-400">WhatsApp</th>
+                  <th className="px-3 py-2 text-left font-medium text-slate-500 dark:text-slate-400">Dirección</th>
+                  <th className="px-3 py-2 text-left font-medium text-slate-500 dark:text-slate-400">Ciudad</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800 bg-white dark:bg-slate-950">
+                {records.map((record) => (
+                  <tr
+                    key={record.id}
+                    className={record.status !== 'Valid' ? 'opacity-50' : 'hover:bg-slate-50 dark:hover:bg-slate-900'}
+                  >
+                    <td className="px-3 py-2">
+                      {record.status === 'Valid' && (
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.has(record.id)}
+                          onChange={() => toggleRecord(record.id)}
+                          className="rounded border-slate-300 dark:border-slate-700"
+                        />
+                      )}
+                    </td>
+                    <td className="px-3 py-2 text-slate-900 dark:text-slate-100">
+                      {record.businessName ?? '—'}
+                      {record.status !== 'Valid' && (
+                        <span className="ml-2 text-xs text-slate-400">
+                          ({record.status === 'Duplicate' ? 'duplicado' : 'inválido'}
+                          {record.errorMessage ? `: ${record.errorMessage}` : ''})
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-3 py-2 text-slate-600 dark:text-slate-300">{record.category ?? '—'}</td>
+                    <td className="px-3 py-2 text-slate-600 dark:text-slate-300">{record.phone ?? '—'}</td>
+                    <td className="px-3 py-2 text-slate-600 dark:text-slate-300">{record.whatsapp ?? '—'}</td>
+                    <td className="px-3 py-2 text-slate-600 dark:text-slate-300">{record.address ?? '—'}</td>
+                    <td className="px-3 py-2 text-slate-600 dark:text-slate-300">{record.city ?? '—'}</td>
+                  </tr>
+                ))}
+                {records.length === 0 && (
+                  <tr>
+                    <td colSpan={7} className="px-4 py-6 text-center text-slate-400">
+                      Sin resultados.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {confirmMutation.isError && (
+            <p className="text-sm text-red-600 dark:text-red-400">
+              {confirmMutation.error instanceof Error ? confirmMutation.error.message : 'No se pudo confirmar la importación.'}
+            </p>
+          )}
+
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => confirmMutation.mutate()}
+              disabled={confirmMutation.isPending || selectableRecords.length === 0 || selectedIds.size === 0}
+              className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-60"
+            >
+              {confirmMutation.isPending ? 'Confirmando…' : `Confirmar (${selectedIds.size} seleccionados)`}
+            </button>
+            <button
+              type="button"
+              onClick={() => cancelMutation.mutate()}
+              disabled={cancelMutation.isPending}
+              className="rounded-md border border-slate-300 dark:border-slate-700 px-4 py-2 text-sm font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-60"
+            >
+              Cancelar búsqueda
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

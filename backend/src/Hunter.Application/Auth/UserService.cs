@@ -44,6 +44,9 @@ public class UserService(IHunterDbContext db, IPasswordHasher passwordHasher) : 
             Phone = string.IsNullOrWhiteSpace(request.Phone)
                 ? null
                 : ContactValueNormalizer.Normalize(ProspectContactChannel.Whatsapp, request.Phone),
+            // A diferencia de Phone, no es un contacto telefónico: es el chat_id numérico que
+            // devuelve @userinfobot, se guarda tal cual (trim, sin normalizador de teléfono).
+            TelegramChatId = string.IsNullOrWhiteSpace(request.TelegramChatId) ? null : request.TelegramChatId.Trim(),
             Area = request.Area
         };
         user.PasswordHash = passwordHasher.Hash(user, request.Password);
@@ -73,6 +76,9 @@ public class UserService(IHunterDbContext db, IPasswordHasher passwordHasher) : 
                 ? null
                 : ContactValueNormalizer.Normalize(ProspectContactChannel.Whatsapp, request.Phone);
         }
+
+        if (request.TelegramChatId is not null)
+            user.TelegramChatId = string.IsNullOrWhiteSpace(request.TelegramChatId) ? null : request.TelegramChatId.Trim();
 
         if (request.Area is not null)
             user.Area = request.Area.Value;
@@ -105,5 +111,5 @@ public class UserService(IHunterDbContext db, IPasswordHasher passwordHasher) : 
     }
 
     private static UserDto ToDto(User user, IReadOnlyCollection<string> roles) =>
-        new(user.Id, user.FirstName, user.LastName, user.Email, user.IsActive, roles, user.Phone, user.Area);
+        new(user.Id, user.FirstName, user.LastName, user.Email, user.IsActive, roles, user.Phone, user.TelegramChatId, user.Area);
 }

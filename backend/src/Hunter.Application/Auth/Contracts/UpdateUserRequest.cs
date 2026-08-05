@@ -7,5 +7,6 @@ namespace Hunter.Application.Auth.Contracts;
 // no-nulo, así que un PATCH parcial no pisa el resto.
 public record UpdateUserRequest(
     string? Phone = null,
+    string? TelegramChatId = null,
     UserArea? Area = null,
     bool? IsActive = null);

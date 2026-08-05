@@ -16,6 +16,8 @@ public class UserConfiguration : IEntityTypeConfiguration<User>
         builder.Property(x => x.LastName).HasMaxLength(120).IsRequired();
         builder.Property(x => x.Email).HasMaxLength(200).IsRequired();
         builder.Property(x => x.Phone).HasMaxLength(30);
+        builder.Property(x => x.TelegramChatId).HasMaxLength(30);
+        builder.Property(x => x.TelegramLinkCode).HasMaxLength(64);
         builder.Property(x => x.PasswordHash).HasMaxLength(500).IsRequired();
         builder.Property(x => x.Area).HasConversion<string>().HasMaxLength(20).HasDefaultValue(UserArea.Unassigned);
 

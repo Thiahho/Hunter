@@ -1,5 +1,7 @@
+using System.Security.Cryptography;
 using Hunter.Application.Auth.Contracts;
 using Hunter.Application.Common;
+using Hunter.Application.Crm;
 using Hunter.Domain.Identity;
 using Hunter.Domain.Organizations;
 using Hunter.Shared;
@@ -7,8 +9,14 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Hunter.Application.Auth;
 
-public class AuthService(IHunterDbContext db, IPasswordHasher passwordHasher, IJwtTokenService tokenService) : IAuthService
+public class AuthService(
+    IHunterDbContext db,
+    IPasswordHasher passwordHasher,
+    IJwtTokenService tokenService,
+    ITelegramNotifier telegramNotifier) : IAuthService
 {
+    private static readonly TimeSpan TelegramLinkCodeLifetime = TimeSpan.FromMinutes(15);
+
     public async Task<Result<AuthResult>> RegisterOrganizationAsync(RegisterOrganizationRequest request, CancellationToken ct = default)
     {
         var validationError = ValidateRegister(request);
@@ -112,6 +120,48 @@ public class AuthService(IHunterDbContext db, IPasswordHasher passwordHasher, IJ
         return Result<CurrentUserDto>.Success(ToDto(user, roles));
     }
 
+    // Autoservicio: el propio usuario logueado genera su link, sin necesidad de una pantalla de
+    // gestión de usuarios (que hoy no existe). Un código nuevo pisa cualquier link pendiente
+    // anterior de ese usuario.
+    public async Task<Result<TelegramLinkDto>> GenerateTelegramLinkAsync(int userId, CancellationToken ct = default)
+    {
+        var botUsername = telegramNotifier.BotUsername;
+        if (string.IsNullOrWhiteSpace(botUsername))
+            return Result<TelegramLinkDto>.Failure("Telegram no está configurado todavía.");
+
+        var user = await db.Users.IgnoreQueryFilters().FirstOrDefaultAsync(u => u.Id == userId, ct);
+        if (user is null)
+            return Result<TelegramLinkDto>.Failure("Usuario no encontrado.");
+
+        var code = RandomNumberGenerator.GetHexString(32);
+        var expiresAt = DateTimeOffset.UtcNow.Add(TelegramLinkCodeLifetime);
+
+        user.TelegramLinkCode = code;
+        user.TelegramLinkCodeExpiresAt = expiresAt;
+        await db.SaveChangesAsync(ct);
+
+        return Result<TelegramLinkDto>.Success(new TelegramLinkDto($"https://t.me/{botUsername}?start={code}", expiresAt));
+    }
+
+    // Llamado desde el webhook de Telegram (sin sesión de usuario, por eso IgnoreQueryFilters y
+    // busca por código en vez de por organización). Nunca lanza: el caller (WebhooksController)
+    // decide qué responderle a Telegram según el Result.
+    public async Task<Result<bool>> CompleteTelegramLinkAsync(string code, string chatId, CancellationToken ct = default)
+    {
+        var user = await db.Users.IgnoreQueryFilters()
+            .FirstOrDefaultAsync(u => u.TelegramLinkCode == code && u.TelegramLinkCodeExpiresAt > DateTimeOffset.UtcNow, ct);
+
+        if (user is null)
+            return Result<bool>.Failure("Link inválido o expirado.");
+
+        user.TelegramChatId = chatId;
+        user.TelegramLinkCode = null;
+        user.TelegramLinkCodeExpiresAt = null;
+        await db.SaveChangesAsync(ct);
+
+        return Result<bool>.Success(true);
+    }
+
     private async Task<AuthResult> BuildAuthResultAsync(User user, IReadOnlyCollection<string> roles, CancellationToken ct)
     {
         var accessToken = tokenService.CreateAccessToken(user, roles);
@@ -130,7 +180,7 @@ public class AuthService(IHunterDbContext db, IPasswordHasher passwordHasher, IJ
     }
 
     private static CurrentUserDto ToDto(User user, IReadOnlyCollection<string> roles) =>
-        new(user.Id, user.FirstName, user.LastName, user.Email, user.OrganizationId, roles);
+        new(user.Id, user.FirstName, user.LastName, user.Email, user.OrganizationId, roles, user.TelegramChatId is not null);
 
     private static string? ValidateRegister(RegisterOrganizationRequest request)
     {

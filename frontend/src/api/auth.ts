@@ -45,3 +45,16 @@ export async function fetchCurrentUser(): Promise<CurrentUser> {
   }
   return response.data.data;
 }
+
+export interface TelegramLink {
+  deepLink: string;
+  expiresAt: string;
+}
+
+export async function generateTelegramLink(): Promise<TelegramLink> {
+  const response = await apiClient.post<ApiResponse<TelegramLink>>('/auth/me/telegram-link');
+  if (!response.data.success || !response.data.data) {
+    throw new Error(response.data.message ?? 'No se pudo generar el link de Telegram.');
+  }
+  return response.data.data;
+}

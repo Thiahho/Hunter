@@ -44,6 +44,21 @@ services:
       WhatsAppCloudApi__HandoffTemplateLanguage: ${WHATSAPP_HANDOFF_TEMPLATE_LANGUAGE:-es}
       GooglePlaces__ApiKey: ${GOOGLE_PLACES_API_KEY:-}
       Cors__AllowedOrigins__0: ${CORS_ALLOWED_ORIGIN:-http://localhost:5173}
+      # Habilita el envío automático de campañas Running (batch cada PollIntervalSeconds,
+      # tamaño de lote = Campaign.MessagesPerMinute). false = solo se envía a mano vía
+      # POST /campaigns/{id}/process-queue, como hasta ahora.
+      CampaignQueue__Enabled: ${CAMPAIGN_QUEUE_ENABLED:-false}
+      CampaignQueue__PollIntervalSeconds: ${CAMPAIGN_QUEUE_POLL_INTERVAL_SECONDS:-60}
+      OpenStreetMap__Endpoint: ${OSM_OVERPASS_ENDPOINT:-https://overpass-api.de/api/interpreter}
+      OpenStreetMap__UserAgent: ${OSM_USER_AGENT:-HunterCRM/1.0}
+      Nominatim__Endpoint: ${NOMINATIM_ENDPOINT:-https://nominatim.openstreetmap.org/search}
+      Nominatim__UserAgent: ${NOMINATIM_USER_AGENT:-HunterCRM/1.0}
+      # Sin esto, las alertas de lead nuevo caen a StubTelegramNotifier (solo loguea, no manda
+      # nada real). Token/username dados por @BotFather. WebhookSecret es el secret_token que se
+      # configura al registrar el webhook (setWebhook) — ver instrucciones de deploy.
+      Telegram__BotToken: ${TELEGRAM_BOT_TOKEN:-}
+      Telegram__BotUsername: ${TELEGRAM_BOT_USERNAME:-}
+      Telegram__WebhookSecret: ${TELEGRAM_WEBHOOK_SECRET:-}
     ports:
       - "8080:8080"
     depends_on:

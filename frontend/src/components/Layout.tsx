@@ -1,10 +1,13 @@
 import type { ReactNode } from 'react';
 import { NavLink, useNavigate } from 'react-router';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import { useAuthStore } from '../store/authStore';
+import { fetchCurrentUser, generateTelegramLink } from '../api/auth';
 
 const navItems = [
   { to: '/app/dashboard', label: 'Dashboard' },
   { to: '/app/prospects', label: 'Prospectos' },
+  { to: '/app/prospects/search', label: 'Buscar prospectos' },
   { to: '/app/leads', label: 'Leads' },
 ];
 
@@ -12,6 +15,14 @@ export function Layout({ children }: { children: ReactNode }) {
   const user = useAuthStore((state) => state.user);
   const clearSession = useAuthStore((state) => state.clearSession);
   const navigate = useNavigate();
+
+  // refetchOnWindowFocus es lo que hace que, al volver de Telegram a esta pestaña después de
+  // completar /start, el estado "conectado" aparezca solo, sin que el usuario tenga que hacer nada.
+  const meQuery = useQuery({ queryKey: ['me'], queryFn: fetchCurrentUser, refetchOnWindowFocus: true });
+  const telegramMutation = useMutation({
+    mutationFn: generateTelegramLink,
+    onSuccess: (link) => window.open(link.deepLink, '_blank'),
+  });
 
   function handleLogout() {
     clearSession();
@@ -48,6 +59,24 @@ export function Layout({ children }: { children: ReactNode }) {
             {user?.firstName} {user?.lastName}
           </p>
           <p className="truncate text-xs text-slate-400">{user?.email}</p>
+
+          {meQuery.data?.telegramConnected ? (
+            <p className="mt-2 text-xs font-medium text-emerald-600 dark:text-emerald-400">Telegram conectado ✓</p>
+          ) : (
+            <button
+              onClick={() => telegramMutation.mutate()}
+              disabled={telegramMutation.isPending}
+              className="mt-2 w-full rounded-md border border-slate-200 dark:border-slate-700 px-3 py-1.5 text-xs font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-60"
+            >
+              {telegramMutation.isPending ? 'Generando link…' : 'Conectar Telegram'}
+            </button>
+          )}
+          {telegramMutation.isError && (
+            <p className="mt-1 text-xs text-red-600 dark:text-red-400">
+              {telegramMutation.error instanceof Error ? telegramMutation.error.message : 'No se pudo conectar Telegram.'}
+            </p>
+          )}
+
           <button
             onClick={handleLogout}
             className="mt-2 w-full rounded-md border border-slate-200 dark:border-slate-700 px-3 py-1.5 text-xs font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"

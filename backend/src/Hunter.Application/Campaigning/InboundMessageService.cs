@@ -16,6 +16,7 @@ public class InboundMessageService(
     IHunterDbContext db,
     IIntentClassifier intentClassifier,
     IMessageProvider messageProvider,
+    ITelegramNotifier telegramNotifier,
     ILogger<InboundMessageService> logger) : IInboundMessageService
 {
     private const decimal ConfidenceThreshold = 0.80m;
@@ -287,7 +288,8 @@ public class InboundMessageService(
         return (lead, true);
     }
 
-    // Avisa al vendedor/administrativo asignado por WhatsApp. Nunca debe romper el
+    // Avisa al vendedor/administrativo asignado, por WhatsApp y por Telegram como canales
+    // independientes (cada uno solo si el usuario tiene el dato cargado). Nunca debe romper el
     // procesamiento del webhook: un fallo acá (de red, de configuración, lo que sea) solo se
     // loguea, porque un 500 en el webhook hace que Meta reintente el mismo evento para siempre.
     private async Task NotifyAssigneeAsync(Lead lead, Prospect prospect, string prospectMessage, CancellationToken ct)
@@ -300,41 +302,69 @@ public class InboundMessageService(
             var assignee = await db.Users.IgnoreQueryFilters()
                 .FirstOrDefaultAsync(u => u.Id == lead.AssignedToUserId.Value, ct);
 
-            if (string.IsNullOrWhiteSpace(assignee?.Phone))
-            {
-                logger.LogWarning(
-                    "[LeadHandoff] Usuario {UserId} asignado al lead {LeadId} no tiene teléfono cargado, no se pudo notificar.",
-                    lead.AssignedToUserId, lead.Id);
+            if (assignee is null)
                 return;
-            }
 
-            var contact = ContactValueNormalizer.Normalize(ProspectContactChannel.Whatsapp, assignee.Phone);
             var freeText = LeadHandoffMessageBuilder.BuildFreeText(prospect, prospectMessage);
 
-            // Preferir la plantilla UTILITY de handoff cuando está configurada: el usuario
-            // interno nunca le escribió al número del negocio, así que texto libre le va a
-            // fallar con error 131047 fuera de la ventana de servicio de 24hs. Sin plantilla
-            // configurada, se intenta texto libre igual (sirve en dev, no en producción).
-            var handoffTemplateName = messageProvider.HandoffTemplateName;
-            var sendRequest = string.IsNullOrWhiteSpace(handoffTemplateName)
-                ? new SendMessageRequest(MessagingChannel.Whatsapp, contact, freeText, PreferFreeText: true)
-                : new SendMessageRequest(
-                    MessagingChannel.Whatsapp, contact, freeText,
-                    TemplateNameOverride: handoffTemplateName,
-                    TemplateParameters: LeadHandoffMessageBuilder.BuildTemplateParameters(prospect, prospectMessage));
-
-            var sendResult = await messageProvider.SendAsync(sendRequest, ct);
-
-            if (!sendResult.Success)
-            {
-                logger.LogWarning(
-                    "[LeadHandoff] No se pudo notificar al usuario {UserId} sobre el lead {LeadId}: {Error}",
-                    lead.AssignedToUserId, lead.Id, sendResult.Error);
-            }
+            await NotifyByWhatsAppAsync(lead, assignee.Phone, prospect, prospectMessage, freeText, ct);
+            await NotifyByTelegramAsync(lead, assignee.TelegramChatId, freeText, ct);
         }
         catch (Exception ex)
         {
             logger.LogWarning(ex, "[LeadHandoff] Error inesperado notificando el lead {LeadId}.", lead.Id);
+        }
+    }
+
+    private async Task NotifyByWhatsAppAsync(
+        Lead lead, string? assigneePhone, Prospect prospect, string prospectMessage, string freeText, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(assigneePhone))
+        {
+            logger.LogWarning(
+                "[LeadHandoff] Usuario {UserId} asignado al lead {LeadId} no tiene teléfono cargado, no se pudo notificar por WhatsApp.",
+                lead.AssignedToUserId, lead.Id);
+            return;
+        }
+
+        var contact = ContactValueNormalizer.Normalize(ProspectContactChannel.Whatsapp, assigneePhone);
+
+        // Preferir la plantilla UTILITY de handoff cuando está configurada: el usuario interno
+        // nunca le escribió al número del negocio, así que texto libre le va a fallar con error
+        // 131047 fuera de la ventana de servicio de 24hs. Sin plantilla configurada, se intenta
+        // texto libre igual (sirve en dev, no en producción).
+        var handoffTemplateName = messageProvider.HandoffTemplateName;
+        var sendRequest = string.IsNullOrWhiteSpace(handoffTemplateName)
+            ? new SendMessageRequest(MessagingChannel.Whatsapp, contact, freeText, PreferFreeText: true)
+            : new SendMessageRequest(
+                MessagingChannel.Whatsapp, contact, freeText,
+                TemplateNameOverride: handoffTemplateName,
+                TemplateParameters: LeadHandoffMessageBuilder.BuildTemplateParameters(prospect, prospectMessage));
+
+        var sendResult = await messageProvider.SendAsync(sendRequest, ct);
+
+        if (!sendResult.Success)
+        {
+            logger.LogWarning(
+                "[LeadHandoff] No se pudo notificar por WhatsApp al usuario {UserId} sobre el lead {LeadId}: {Error}",
+                lead.AssignedToUserId, lead.Id, sendResult.Error);
+        }
+    }
+
+    // A diferencia de WhatsApp, Telegram no tiene ventana de servicio de 24hs ni requiere
+    // plantilla aprobada: siempre es texto libre.
+    private async Task NotifyByTelegramAsync(Lead lead, string? assigneeTelegramChatId, string freeText, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(assigneeTelegramChatId))
+            return;
+
+        var telegramResult = await telegramNotifier.SendAsync(assigneeTelegramChatId, freeText, ct);
+
+        if (!telegramResult.Success)
+        {
+            logger.LogWarning(
+                "[LeadHandoff] No se pudo notificar por Telegram al usuario {UserId} sobre el lead {LeadId}: {Error}",
+                lead.AssignedToUserId, lead.Id, telegramResult.Error);
         }
     }
 }

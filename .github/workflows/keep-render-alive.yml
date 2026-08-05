@@ -1,0 +1,17 @@
+name: Keep Render demo alive
+
+on:
+  schedule:
+    # Cada 10 minutos: por debajo de los ~15 min de inactividad en los que Render
+    # duerme el servicio free/demo.
+    - cron: "*/10 * * * *"
+  workflow_dispatch: {}
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping /health
+        run: |
+          curl -fsS --max-time 20 "https://hunter-k3il.onrender.com/health" \
+            || echo "Ping falló (probablemente el servicio estaba despertando), no es motivo de fallo del job."

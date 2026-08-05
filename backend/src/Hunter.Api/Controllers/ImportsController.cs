@@ -36,6 +36,16 @@ public class ImportsController(IImportService importService) : ControllerBase
         return Ok(ApiResponse<ImportPreviewDto>.Ok(result.Value!));
     }
 
+    [HttpPost("openstreetmap")]
+    public async Task<IActionResult> ImportFromOpenStreetMap(OpenStreetMapImportRequest request, CancellationToken ct)
+    {
+        var result = await importService.ImportFromOpenStreetMapAsync(request, ct);
+        if (!result.Succeeded)
+            return BadRequest(ApiResponse<ImportPreviewDto>.Fail(result.Error!));
+
+        return Ok(ApiResponse<ImportPreviewDto>.Ok(result.Value!));
+    }
+
     [HttpGet("{id:int}/preview")]
     public async Task<IActionResult> Preview(int id, CancellationToken ct)
     {
@@ -46,10 +56,20 @@ public class ImportsController(IImportService importService) : ControllerBase
         return Ok(ApiResponse<ImportPreviewDto>.Ok(result.Value!));
     }
 
-    [HttpPost("{id:int}/confirm")]
-    public async Task<IActionResult> Confirm(int id, CancellationToken ct)
+    [HttpGet("{id:int}/records")]
+    public async Task<IActionResult> Records(int id, CancellationToken ct)
     {
-        var result = await importService.ConfirmAsync(id, ct);
+        var result = await importService.GetRecordsAsync(id, ct);
+        if (!result.Succeeded)
+            return NotFound(ApiResponse<IReadOnlyCollection<ImportRecordDto>>.Fail(result.Error!));
+
+        return Ok(ApiResponse<IReadOnlyCollection<ImportRecordDto>>.Ok(result.Value!));
+    }
+
+    [HttpPost("{id:int}/confirm")]
+    public async Task<IActionResult> Confirm(int id, [FromBody] ConfirmImportRequest? request, CancellationToken ct)
+    {
+        var result = await importService.ConfirmAsync(id, request, ct);
         if (!result.Succeeded)
             return BadRequest(ApiResponse<ImportConfirmResultDto>.Fail(result.Error!));
 

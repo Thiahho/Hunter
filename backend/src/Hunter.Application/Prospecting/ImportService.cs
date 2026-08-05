@@ -14,7 +14,8 @@ public class ImportService(
     IHunterDbContext db,
     ICurrentUserService currentUser,
     IProspectDuplicateFinder duplicateFinder,
-    IGooglePlacesClient googlePlacesClient) : IImportService
+    IGooglePlacesClient googlePlacesClient,
+    IOpenStreetMapClient openStreetMapClient) : IImportService
 {
     public async Task<Result<ImportPreviewDto>> ImportCsvAsync(Stream csvStream, string fileName, CancellationToken ct = default)
     {
@@ -74,6 +75,68 @@ public class ImportService(
         return Result<ImportPreviewDto>.Success(ToPreviewDto(batch));
     }
 
+    private const int MaxOpenStreetMapLocalities = 5;
+    private const int MinOpenStreetMapRadiusKm = 1;
+    private const int MaxOpenStreetMapRadiusKm = 50;
+
+    public async Task<Result<ImportPreviewDto>> ImportFromOpenStreetMapAsync(OpenStreetMapImportRequest request, CancellationToken ct = default)
+    {
+        var localities = (request.Localities ?? [])
+            .Select(l => l?.Trim())
+            .Where(l => !string.IsNullOrWhiteSpace(l))
+            .Select(l => l!)
+            .Distinct()
+            .ToList();
+
+        if (localities.Count == 0)
+            return Result<ImportPreviewDto>.Failure("Debe indicar al menos una zona o localidad.");
+        if (localities.Count > MaxOpenStreetMapLocalities)
+            return Result<ImportPreviewDto>.Failure($"Máximo {MaxOpenStreetMapLocalities} localidades por búsqueda.");
+
+        var categories = request.Categories is { Count: > 0 } ? request.Categories.Distinct().ToList() : OpenStreetMapCategories.Supported.ToList();
+        var unsupported = categories.Except(OpenStreetMapCategories.Supported).ToList();
+        if (unsupported.Count > 0)
+            return Result<ImportPreviewDto>.Failure($"Rubro(s) no soportados por OpenStreetMap: {string.Join(", ", unsupported)}.");
+
+        if (request.RadiusKm is int radiusKm && (radiusKm < MinOpenStreetMapRadiusKm || radiusKm > MaxOpenStreetMapRadiusKm))
+            return Result<ImportPreviewDto>.Failure($"El radio debe estar entre {MinOpenStreetMapRadiusKm} y {MaxOpenStreetMapRadiusKm} km.");
+
+        var organizationId = currentUser.OrganizationId!.Value;
+
+        var criteria = new OpenStreetMapSearchCriteria(localities, categories, request.RadiusKm, request.MaxResults);
+        var places = await openStreetMapClient.SearchAsync(criteria, ct);
+        if (places.Count == 0)
+            return Result<ImportPreviewDto>.Failure("OpenStreetMap no devolvió resultados (o la búsqueda falló).");
+
+        var rows = places.Select(p => new ProspectCsvRow
+        {
+            business_name = p.Name,
+            phone = p.PhoneNumber,
+            // A diferencia de Google Places, acá NO se asume que el teléfono también sirve para
+            // WhatsApp: OSM guarda muchos fijos, y registrarlos como contacto de WhatsApp
+            // generaría envíos de campaña que Meta rechaza. Solo se marca si es un celular
+            // argentino reconocible.
+            whatsapp = IsWhatsAppCapable(p.PhoneNumber) ? p.PhoneNumber : null,
+            address = p.Address,
+            city = p.City,
+            province = p.Province,
+            category = p.Category.ToString(),
+            source = "openstreetmap"
+        }).ToList();
+
+        var batch = await BuildBatchAsync(
+            rows, $"openstreetmap: {string.Join(", ", localities)}", ProspectSourceType.OpenStreetMap, organizationId, ct);
+
+        db.ImportBatches.Add(batch);
+        await db.SaveChangesAsync(ct);
+
+        return Result<ImportPreviewDto>.Success(ToPreviewDto(batch));
+    }
+
+    private static bool IsWhatsAppCapable(string? phone) =>
+        !string.IsNullOrWhiteSpace(phone) &&
+        ArgentineMobileDetector.IsWhatsAppCapable(ContactValueNormalizer.Normalize(ProspectContactChannel.Whatsapp, phone));
+
     public async Task<Result<ImportPreviewDto>> GetPreviewAsync(int batchId, CancellationToken ct = default)
     {
         var batch = await db.ImportBatches.FirstOrDefaultAsync(b => b.Id == batchId, ct);
@@ -82,7 +145,39 @@ public class ImportService(
             : Result<ImportPreviewDto>.Success(ToPreviewDto(batch));
     }
 
-    public async Task<Result<ImportConfirmResultDto>> ConfirmAsync(int batchId, CancellationToken ct = default)
+    public async Task<Result<IReadOnlyCollection<ImportRecordDto>>> GetRecordsAsync(int batchId, CancellationToken ct = default)
+    {
+        var batch = await db.ImportBatches.Include(b => b.Records).FirstOrDefaultAsync(b => b.Id == batchId, ct);
+        if (batch is null)
+            return Result<IReadOnlyCollection<ImportRecordDto>>.Failure("Importación no encontrada.");
+
+        var records = batch.Records.OrderBy(r => r.RowNumber).Select(ToRecordDto).ToList();
+        return Result<IReadOnlyCollection<ImportRecordDto>>.Success(records);
+    }
+
+    // Filas Valid/Duplicate tienen NormalizedData (ya pasaron ContactValueNormalizer y el
+    // parseo de categoría); filas Invalid nunca lo tienen, así que se cae al RawData crudo del
+    // CSV/fuente externa para al menos mostrar lo que se intentó importar y por qué falló.
+    private static ImportRecordDto ToRecordDto(ImportBatchRecord record)
+    {
+        if (record.NormalizedData is not null)
+        {
+            var normalized = JsonSerializer.Deserialize<NormalizedRow>(record.NormalizedData)!;
+            var phone = normalized.Contacts.FirstOrDefault(c => c.Channel == ProspectContactChannel.Phone)?.Value;
+            var whatsapp = normalized.Contacts.FirstOrDefault(c => c.Channel == ProspectContactChannel.Whatsapp)?.Value;
+
+            return new ImportRecordDto(
+                record.Id, record.RowNumber, record.Status.ToString(), normalized.BusinessName, normalized.Category.ToString(),
+                phone, whatsapp, normalized.Address, normalized.City, normalized.Province, record.ErrorMessage);
+        }
+
+        var raw = JsonSerializer.Deserialize<ProspectCsvRow>(record.RawData)!;
+        return new ImportRecordDto(
+            record.Id, record.RowNumber, record.Status.ToString(), raw.business_name, raw.category,
+            raw.phone, raw.whatsapp, raw.address, raw.city, raw.province, record.ErrorMessage);
+    }
+
+    public async Task<Result<ImportConfirmResultDto>> ConfirmAsync(int batchId, ConfirmImportRequest? request = null, CancellationToken ct = default)
     {
         var batch = await db.ImportBatches
             .Include(b => b.Records)
@@ -94,9 +189,12 @@ public class ImportService(
         if (batch.Status != ImportBatchStatus.Preview)
             return Result<ImportConfirmResultDto>.Failure($"La importación está en estado {batch.Status}, no se puede confirmar.");
 
+        var selectedIds = request?.SelectedRecordIds;
         var created = 0;
 
-        foreach (var record in batch.Records.Where(r => r.Status == ImportBatchRecordStatus.Valid))
+        // selectedIds == null preserva el comportamiento de siempre (importar todos los Valid):
+        // así CSV y Google Places, que no mandan este parámetro, no cambian de comportamiento.
+        foreach (var record in batch.Records.Where(r => r.Status == ImportBatchRecordStatus.Valid && (selectedIds is null || selectedIds.Contains(r.Id))))
         {
             var normalized = JsonSerializer.Deserialize<NormalizedRow>(record.NormalizedData!)!;
 

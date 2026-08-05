@@ -8,6 +8,7 @@ export interface CurrentUser {
   email: string;
   organizationId: number;
   roles: string[];
+  telegramConnected: boolean;
 }
 
 interface AuthState {

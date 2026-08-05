@@ -10,4 +10,5 @@ public record UserDto(
     bool IsActive,
     IReadOnlyCollection<string> Roles,
     string? Phone,
+    string? TelegramChatId,
     UserArea Area);

@@ -65,4 +65,15 @@ public class AuthController(IAuthService authService, ICurrentUserService curren
 
         return Ok(ApiResponse<CurrentUserDto>.Ok(result.Value!));
     }
+
+    [HttpPost("me/telegram-link")]
+    [Authorize]
+    public async Task<IActionResult> GenerateTelegramLink(CancellationToken ct)
+    {
+        var result = await authService.GenerateTelegramLinkAsync(currentUserService.UserId!.Value, ct);
+        if (!result.Succeeded)
+            return BadRequest(ApiResponse<TelegramLinkDto>.Fail(result.Error!));
+
+        return Ok(ApiResponse<TelegramLinkDto>.Ok(result.Value!));
+    }
 }

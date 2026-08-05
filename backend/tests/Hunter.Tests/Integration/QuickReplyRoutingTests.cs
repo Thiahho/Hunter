@@ -66,7 +66,7 @@ public class QuickReplyRoutingTests
         var prospectId = await SeedProspectWithWhatsappAsync(dbName, orgId, "5491112345678", ProspectCategory.Distributor);
 
         await using var db = TestDb.Create(dbName, organizationId: null);
-        var service = new InboundMessageService(db, new KeywordIntentClassifier(), new StubMessageProvider(NullLogger<StubMessageProvider>.Instance), NullLogger<InboundMessageService>.Instance);
+        var service = new InboundMessageService(db, new KeywordIntentClassifier(), new StubMessageProvider(NullLogger<StubMessageProvider>.Instance), new RecordingTelegramNotifier(), NullLogger<InboundMessageService>.Instance);
 
         var request = new InboundMessageRequest(
             orgId, "5491112345678", "Estoy interesado", ExternalInboundId: "wh-btn-1", ButtonPayload: QuickReplyPayloads.Interested);
@@ -97,7 +97,7 @@ public class QuickReplyRoutingTests
         await SeedProspectWithWhatsappAsync(dbName, orgId, "5491112345678", ProspectCategory.Workshop);
 
         await using var db = TestDb.Create(dbName, organizationId: null);
-        var service = new InboundMessageService(db, new KeywordIntentClassifier(), new StubMessageProvider(NullLogger<StubMessageProvider>.Instance), NullLogger<InboundMessageService>.Instance);
+        var service = new InboundMessageService(db, new KeywordIntentClassifier(), new StubMessageProvider(NullLogger<StubMessageProvider>.Instance), new RecordingTelegramNotifier(), NullLogger<InboundMessageService>.Instance);
 
         var result = await service.ProcessAsync(new InboundMessageRequest(
             orgId, "5491112345678", "Estoy interesado", ButtonPayload: QuickReplyPayloads.Interested));
@@ -118,7 +118,7 @@ public class QuickReplyRoutingTests
         await SeedProspectWithWhatsappAsync(dbName, orgId, "5491112345679", ProspectCategory.AutoPartsStore);
 
         await using var db = TestDb.Create(dbName, organizationId: null);
-        var service = new InboundMessageService(db, new KeywordIntentClassifier(), new StubMessageProvider(NullLogger<StubMessageProvider>.Instance), NullLogger<InboundMessageService>.Instance);
+        var service = new InboundMessageService(db, new KeywordIntentClassifier(), new StubMessageProvider(NullLogger<StubMessageProvider>.Instance), new RecordingTelegramNotifier(), NullLogger<InboundMessageService>.Instance);
 
         var result = await service.ProcessAsync(new InboundMessageRequest(orgId, "5491112345679", "me interesa, pasame info"));
 
@@ -156,7 +156,7 @@ public class QuickReplyRoutingTests
         await SeedProspectWithWhatsappAsync(dbName, orgId, "5491112345678", ProspectCategory.Distributor);
 
         await using var processDb = TestDb.Create(dbName, organizationId: null);
-        var service = new InboundMessageService(processDb, new KeywordIntentClassifier(), new StubMessageProvider(NullLogger<StubMessageProvider>.Instance), NullLogger<InboundMessageService>.Instance);
+        var service = new InboundMessageService(processDb, new KeywordIntentClassifier(), new StubMessageProvider(NullLogger<StubMessageProvider>.Instance), new RecordingTelegramNotifier(), NullLogger<InboundMessageService>.Instance);
 
         var result = await service.ProcessAsync(new InboundMessageRequest(
             orgId, "5491112345678", "Estoy interesado", ButtonPayload: QuickReplyPayloads.Interested));
@@ -179,7 +179,7 @@ public class QuickReplyRoutingTests
         await SeedProspectWithWhatsappAsync(dbName, orgId, "5491112345678", ProspectCategory.Workshop);
 
         await using var db = TestDb.Create(dbName, organizationId: null);
-        var service = new InboundMessageService(db, new KeywordIntentClassifier(), new StubMessageProvider(NullLogger<StubMessageProvider>.Instance), NullLogger<InboundMessageService>.Instance);
+        var service = new InboundMessageService(db, new KeywordIntentClassifier(), new StubMessageProvider(NullLogger<StubMessageProvider>.Instance), new RecordingTelegramNotifier(), NullLogger<InboundMessageService>.Instance);
 
         var request = new InboundMessageRequest(
             orgId, "5491112345678", "che como andas todo bien", ExternalInboundId: "wh-unknown-btn", ButtonPayload: "unrecognized_payload");

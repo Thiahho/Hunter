@@ -2,7 +2,9 @@ using System.Net.Http.Headers;
 using Hunter.Application.Auth;
 using Hunter.Application.Campaigning;
 using Hunter.Application.Common;
+using Hunter.Application.Crm;
 using Hunter.Application.Prospecting;
+using Hunter.Infrastructure.BackgroundJobs;
 using Hunter.Infrastructure.Messaging;
 using Hunter.Infrastructure.Persistence;
 using Hunter.Infrastructure.Prospecting;
@@ -53,10 +55,46 @@ public static class DependencyInjection
             services.AddScoped<IMessageProvider, StubMessageProvider>();
         }
 
+        services.Configure<TelegramOptions>(configuration.GetSection(TelegramOptions.SectionName));
+        var telegramOptions = configuration.GetSection(TelegramOptions.SectionName).Get<TelegramOptions>();
+
+        if (telegramOptions?.IsConfigured == true)
+        {
+            services.AddHttpClient<ITelegramNotifier, TelegramNotifier>(client =>
+            {
+                client.BaseAddress = new Uri("https://api.telegram.org/");
+            });
+        }
+        else
+        {
+            services.AddScoped<ITelegramNotifier, StubTelegramNotifier>();
+        }
+
+        services.Configure<CampaignQueueOptions>(configuration.GetSection(CampaignQueueOptions.SectionName));
+        services.AddHostedService<CampaignQueueBackgroundService>();
+
         services.Configure<GooglePlacesOptions>(configuration.GetSection(GooglePlacesOptions.SectionName));
         services.AddHttpClient<IGooglePlacesClient, GooglePlacesClient>(client =>
         {
             client.BaseAddress = new Uri("https://places.googleapis.com/");
+        });
+
+        services.Configure<NominatimOptions>(configuration.GetSection(NominatimOptions.SectionName));
+        services.AddHttpClient<INominatimClient, NominatimClient>((sp, client) =>
+        {
+            var opts = sp.GetRequiredService<IOptions<NominatimOptions>>().Value;
+            client.Timeout = TimeSpan.FromSeconds(opts.TimeoutSeconds);
+        });
+
+        services.Configure<OpenStreetMapOptions>(configuration.GetSection(OpenStreetMapOptions.SectionName));
+        services.AddHttpClient<IOpenStreetMapClient, OpenStreetMapClient>((sp, client) =>
+        {
+            var opts = sp.GetRequiredService<IOptions<OpenStreetMapOptions>>().Value;
+            // Overpass no cobra por request, pero sí es lento bajo carga pública: se le da
+            // margen sobre el [timeout:N] que la propia query le pide al servidor, para no
+            // cortar la conexión antes de que Overpass responda con un 504 legible.
+            client.Timeout = TimeSpan.FromSeconds(opts.TimeoutSeconds + 30);
+            client.DefaultRequestHeaders.UserAgent.ParseAdd(opts.UserAgent);
         });
 
         return services;

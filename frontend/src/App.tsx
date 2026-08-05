@@ -4,6 +4,7 @@ import { DashboardPage } from './features/dashboard/DashboardPage';
 import { ProspectsListPage } from './features/prospects/ProspectsListPage';
 import { ProspectDetailPage } from './features/prospects/ProspectDetailPage';
 import { ProspectCreatePage } from './features/prospects/ProspectCreatePage';
+import { ProspectSearchPage } from './features/prospects/ProspectSearchPage';
 import { LeadsKanbanPage } from './features/leads/LeadsKanbanPage';
 import { LeadDetailPage } from './features/leads/LeadDetailPage';
 import { ProtectedRoute } from './components/ProtectedRoute';
@@ -42,6 +43,17 @@ export default function App() {
           <ProtectedRoute>
             <Layout>
               <ProspectCreatePage />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/app/prospects/search"
+        element={
+          <ProtectedRoute>
+            <Layout>
+              <ProspectSearchPage />
             </Layout>
           </ProtectedRoute>
         }

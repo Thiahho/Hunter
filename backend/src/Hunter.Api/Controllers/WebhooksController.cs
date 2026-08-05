@@ -1,8 +1,10 @@
 using System.Text;
 using System.Text.Json;
 using Hunter.Api.Contracts;
+using Hunter.Application.Auth;
 using Hunter.Application.Campaigning;
 using Hunter.Application.Campaigning.Contracts;
+using Hunter.Application.Crm;
 using Hunter.Domain.Campaigning;
 using Hunter.Infrastructure.Messaging;
 using Hunter.Shared;
@@ -22,8 +24,11 @@ namespace Hunter.Api.Controllers;
 public class WebhooksController(
     IInboundMessageService inboundMessageService,
     IMessageStatusService messageStatusService,
+    IAuthService authService,
+    ITelegramNotifier telegramNotifier,
     IConfiguration configuration,
     IOptions<WhatsAppCloudApiOptions> whatsAppOptions,
+    IOptions<TelegramOptions> telegramOptions,
     ILogger<WebhooksController> logger) : ControllerBase
 {
     [HttpPost("inbound")]
@@ -161,4 +166,45 @@ public class WebhooksController(
         "failed" => MessageStatus.Failed,
         _ => null
     };
+
+    // Recibe los updates del bot de Telegram (hoy solo nos importa /start <code> del flujo de
+    // vinculación self-service, ver AuthService.CompleteTelegramLinkAsync). Se registra una sola
+    // vez a mano contra la Bot API (setWebhook), no hay handshake de verificación como en Meta.
+    [HttpPost("telegram")]
+    public async Task<IActionResult> TelegramInbound(CancellationToken ct)
+    {
+        var providedSecret = Request.Headers["X-Telegram-Bot-Api-Secret-Token"].ToString();
+        if (!TelegramWebhookSecretValidator.IsValid(providedSecret, telegramOptions.Value.WebhookSecret))
+            return Unauthorized();
+
+        TelegramUpdate? update;
+        try
+        {
+            update = await Request.ReadFromJsonAsync<TelegramUpdate>(ct);
+        }
+        catch (JsonException)
+        {
+            return Ok(); // update que no podemos parsear: no hay nada que reintentar del lado de Telegram
+        }
+
+        var text = update?.Message?.Text;
+        if (text is not null && text.StartsWith("/start ", StringComparison.Ordinal))
+        {
+            var code = text["/start ".Length..].Trim();
+            var chatId = update!.Message!.Chat.Id.ToString();
+
+            var result = await authService.CompleteTelegramLinkAsync(code, chatId, ct);
+
+            var reply = result.Succeeded
+                ? "✅ Listo, vas a recibir alertas de leads acá."
+                : "Ese link ya expiró o no es válido. Generá uno nuevo desde Hunter.";
+
+            var sendResult = await telegramNotifier.SendAsync(chatId, reply, ct);
+            if (!sendResult.Success)
+                logger.LogWarning("[Telegram webhook] No se pudo responder al chat_id {ChatId}: {Error}", chatId, sendResult.Error);
+        }
+
+        // Telegram reintenta si no respondemos 200 rápido, igual que Meta.
+        return Ok();
+    }
 }

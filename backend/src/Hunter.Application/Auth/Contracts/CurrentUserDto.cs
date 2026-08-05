@@ -6,4 +6,7 @@ public record CurrentUserDto(
     string LastName,
     string Email,
     int OrganizationId,
-    IReadOnlyCollection<string> Roles);
+    IReadOnlyCollection<string> Roles,
+    bool TelegramConnected);
+
+public record TelegramLinkDto(string DeepLink, DateTimeOffset ExpiresAt);

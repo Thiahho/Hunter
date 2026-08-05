@@ -9,4 +9,5 @@ public record CreateUserRequest(
     string Password,
     string Role,
     string? Phone = null,
+    string? TelegramChatId = null,
     UserArea Area = UserArea.Unassigned);
