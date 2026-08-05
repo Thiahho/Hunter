@@ -82,6 +82,8 @@ export interface Prospect {
   province: string | null;
   country: string | null;
   postalCode: string | null;
+  latitude: number | null;
+  longitude: number | null;
   website: string | null;
   commercialScore: number | null;
   operationalPriority: OperationalPriority | null;

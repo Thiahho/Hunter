@@ -22,6 +22,8 @@ public record ProspectDto(
     string? Province,
     string? Country,
     string? PostalCode,
+    double? Latitude,
+    double? Longitude,
     string? Website,
     int? CommercialScore,
     OperationalPriority? OperationalPriority,

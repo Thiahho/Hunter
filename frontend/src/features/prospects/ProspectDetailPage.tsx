@@ -30,6 +30,19 @@ import {
 const DEFAULT_TEST_MESSAGE =
   'Hola {{business_name}}! Somos Hunter. Mirá nuestro catálogo acá: https://tu-tienda.com/catalogo';
 
+// Mismo criterio que buildMapsLink en ProspectsListPage: lat/long si están cargados (más
+// preciso), si no arma una búsqueda de texto con nombre + dirección + ciudad + provincia.
+function buildMapsLink(prospect: Prospect): string | null {
+  if (typeof prospect.latitude === 'number' && typeof prospect.longitude === 'number') {
+    return `https://www.google.com/maps/search/?api=1&query=${prospect.latitude},${prospect.longitude}`;
+  }
+
+  const parts = [prospect.address, prospect.city, prospect.province].filter(Boolean);
+  if (parts.length === 0) return null;
+
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${prospect.businessName}, ${parts.join(', ')}`)}`;
+}
+
 const categories: ProspectCategory[] = [
   'Unknown',
   'Distributor',
@@ -649,6 +662,26 @@ export function ProspectDetailPage() {
               <div className="flex justify-between">
                 <dt className="text-slate-500 dark:text-slate-400">Código postal</dt>
                 <dd className="text-slate-900 dark:text-slate-100">{data.postalCode ?? '—'}</dd>
+              </div>
+              <div className="flex justify-between">
+                <dt className="text-slate-500 dark:text-slate-400">Mapa</dt>
+                <dd className="text-slate-900 dark:text-slate-100">
+                  {(() => {
+                    const mapsLink = buildMapsLink(data);
+                    return mapsLink ? (
+                      <a
+                        href={mapsLink}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-indigo-600 dark:text-indigo-400 hover:underline"
+                      >
+                        📍 Ver mapa
+                      </a>
+                    ) : (
+                      '—'
+                    );
+                  })()}
+                </dd>
               </div>
               <div className="flex justify-between">
                 <dt className="text-slate-500 dark:text-slate-400">Tamaño de negocio</dt>

@@ -338,6 +338,8 @@ public class ProspectService(IHunterDbContext db, ICurrentUserService currentUse
                 p.Province,
                 p.Country,
                 p.PostalCode,
+                p.Latitude,
+                p.Longitude,
                 p.Website,
                 p.CommercialScore,
                 p.OperationalPriority,
