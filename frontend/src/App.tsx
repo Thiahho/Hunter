@@ -8,6 +8,7 @@ import { ProspectSearchPage } from './features/prospects/ProspectSearchPage';
 import { LeadsKanbanPage } from './features/leads/LeadsKanbanPage';
 import { LeadDetailPage } from './features/leads/LeadDetailPage';
 import { UsersPage } from './features/users/UsersPage';
+import { MessagesPage } from './features/messages/MessagesPage';
 import { ProfilePage } from './features/profile/ProfilePage';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { Layout } from './components/Layout';
@@ -111,6 +112,17 @@ export default function App() {
           <ProtectedRoute>
             <Layout>
               <ProfilePage />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/app/messages"
+        element={
+          <ProtectedRoute>
+            <Layout>
+              <MessagesPage />
             </Layout>
           </ProtectedRoute>
         }

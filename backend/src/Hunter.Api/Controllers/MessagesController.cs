@@ -10,7 +10,7 @@ namespace Hunter.Api.Controllers;
 [ApiController]
 [Authorize]
 [Route("api/v1/messages")]
-public class MessagesController(IMessageQueryService messageQueryService) : ControllerBase
+public class MessagesController(IMessageQueryService messageQueryService, IMessageResponseQueryService messageResponseQueryService) : ControllerBase
 {
     [HttpGet]
     public async Task<IActionResult> Search(
@@ -23,5 +23,21 @@ public class MessagesController(IMessageQueryService messageQueryService) : Cont
     {
         var result = await messageQueryService.SearchAsync(campaignId, prospectId, status, page, pageSize, ct);
         return Ok(ApiResponse<PagedResult<MessageDto>>.Ok(result));
+    }
+
+    // Respuestas entrantes (texto libre o tap de botón quick-reply) ya clasificadas por
+    // IIntentClassifier — ver InboundMessageService.ProcessAsync. Endpoint separado de Search
+    // porque Message (salida) y MessageResponse (entrada) son entidades distintas.
+    [HttpGet("responses")]
+    public async Task<IActionResult> SearchResponses(
+        [FromQuery] int? campaignId,
+        [FromQuery] int? prospectId,
+        [FromQuery] IntentClassification? classification,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 50,
+        CancellationToken ct = default)
+    {
+        var result = await messageResponseQueryService.SearchAsync(campaignId, prospectId, classification, page, pageSize, ct);
+        return Ok(ApiResponse<PagedResult<MessageResponseDto>>.Ok(result));
     }
 }

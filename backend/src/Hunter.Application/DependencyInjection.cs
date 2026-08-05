@@ -24,6 +24,7 @@ public static class DependencyInjection
         services.AddScoped<IMessageTemplateService, MessageTemplateService>();
         services.AddScoped<ICampaignService, CampaignService>();
         services.AddScoped<IMessageQueryService, MessageQueryService>();
+        services.AddScoped<IMessageResponseQueryService, MessageResponseQueryService>();
         services.AddScoped<IInboundMessageService, InboundMessageService>();
         services.AddScoped<ITestMessageService, TestMessageService>();
         services.AddScoped<IMessageStatusService, MessageStatusService>();
