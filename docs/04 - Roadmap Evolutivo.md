@@ -1,13 +1,13 @@
 📕 04 - Roadmap Evolutivo.md
 
-Producto: Hunter CRM AI
+Producto: DIFRANI | Hunter CRM AI
 Versión del documento: 1.0
 Estado: Planificación
 Propósito: Definir la evolución del producto desde el MVP inicial hasta una plataforma SaaS comercial escalable.
 
 1. Objetivo
 
-El roadmap evolutivo define cómo Hunter CRM AI crecerá progresivamente desde una primera versión enfocada en validar el modelo comercial hasta convertirse en una plataforma integral de prospección e inteligencia comercial.
+El roadmap evolutivo define cómo DIFRANI | Hunter CRM AI crecerá progresivamente desde una primera versión enfocada en validar el modelo comercial hasta convertirse en una plataforma integral de prospección e inteligencia comercial.
 
 El desarrollo se dividirá en fases para evitar incorporar funcionalidades prematuramente y mantener el foco en la validación del producto.
 
@@ -589,7 +589,7 @@ Capacidad multiempresa.
 Viabilidad comercial del SaaS.
 13. Visión Final
 
-La evolución de Hunter CRM AI será:
+La evolución de DIFRANI | Hunter CRM AI será:
 
               DESCUBRIR
                   ↓

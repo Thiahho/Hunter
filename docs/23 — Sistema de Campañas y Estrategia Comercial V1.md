@@ -1,6 +1,6 @@
 📘 23 — Sistema de Campañas y Estrategia Comercial V1
 
-Producto: Hunter CRM AI
+Producto: DIFRANI | Hunter CRM AI
 Empresa: Difrani
 Versión: MVP V1
 Objetivo: Convertir prospectos en conversaciones comerciales calificadas y derivar los prospectos interesados a una persona humana para cerrar la venta.
@@ -904,7 +904,7 @@ Nunca:
 ↓
 Escalar inmediatamente
 49. Arquitectura Comercial V1
-              HUNTER CRM AI
+              DIFRANI | Hunter CRM AI
                     │
                     ▼
               PROSPECTOS
@@ -1144,7 +1144,7 @@ La arquitectura estratégica será:
           MEJORAR ESTRATEGIA
 60. Conclusión
 
-La V1 de Hunter CRM AI para Difrani debe ser principalmente un sistema de generación y calificación de oportunidades comerciales, no un vendedor autónomo.
+La V1 de DIFRANI | Hunter CRM AI para Difrani debe ser principalmente un sistema de generación y calificación de oportunidades comerciales, no un vendedor autónomo.
 
 El modelo será:
 

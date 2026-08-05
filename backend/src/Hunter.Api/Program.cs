@@ -33,7 +33,7 @@ try
     {
         options.SwaggerDoc("v1", new OpenApiInfo
         {
-            Title = "Hunter CRM AI API",
+            Title = "DIFRANI | Hunter CRM AI API",
             Version = "v1"
         });
     });
@@ -100,7 +100,7 @@ try
         app.UseSwagger();
         app.UseSwaggerUI(options =>
         {
-            options.SwaggerEndpoint("/swagger/v1/swagger.json", "Hunter CRM AI API v1");
+            options.SwaggerEndpoint("/swagger/v1/swagger.json", "DIFRANI | Hunter CRM AI API v1");
         });
     }
 

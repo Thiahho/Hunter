@@ -1,6 +1,6 @@
 📗 07 — Backlog Técnico V1
 
-Producto: Hunter CRM AI
+Producto: DIFRANI | Hunter CRM AI
 Versión: MVP V1
 Objetivo: Construir una primera versión funcional antes de octubre de 2026, enfocada en generar prospectos, contactar potenciales clientes, detectar interés y transferir la oportunidad a una persona para cerrar la venta.
 

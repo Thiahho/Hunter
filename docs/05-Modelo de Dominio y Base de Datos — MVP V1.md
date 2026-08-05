@@ -1,13 +1,13 @@
 📘 05 — Modelo de Dominio y Base de Datos — MVP V1
 
-Producto: Hunter CRM AI
+Producto: DIFRANI | Hunter CRM AI
 Versión: 1.0
 Estado: Diseño inicial
 Objetivo: Definir las entidades, relaciones y reglas de negocio necesarias para implementar el MVP.
 
 1. Objetivo
 
-Definir el modelo de dominio que representa el funcionamiento comercial de Hunter CRM AI durante la V1.
+Definir el modelo de dominio que representa el funcionamiento comercial de DIFRANI | Hunter CRM AI durante la V1.
 
 El modelo debe cubrir el flujo:
 

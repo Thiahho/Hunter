@@ -1,6 +1,6 @@
 📘 18 — Modelo de Datos y Base de Datos V1
 
-Producto: Hunter CRM AI
+Producto: DIFRANI | Hunter CRM AI
 Empresa inicial: Difrani
 Versión: MVP V1
 Objetivo: Definir la estructura de datos necesaria para soportar prospectos, campañas, mensajería, IA, leads, ventas y métricas.

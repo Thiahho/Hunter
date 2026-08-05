@@ -1,6 +1,6 @@
 📘 15 — KPIs y Modelo de Medición V1
 
-Producto: Hunter CRM AI
+Producto: DIFRANI | Hunter CRM AI
 Versión: MVP V1
 Objetivo: Medir el rendimiento real del sistema desde la captación del prospecto hasta la venta cerrada, permitiendo determinar si la automatización genera un retorno económico positivo.
 

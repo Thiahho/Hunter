@@ -26,7 +26,7 @@ export function LoginPage() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-slate-50 dark:bg-slate-950 px-4">
       <div className="w-full max-w-sm rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-8 shadow-sm">
-        <h1 className="text-xl font-semibold text-slate-900 dark:text-slate-100">Hunter CRM AI</h1>
+        <h1 className="text-xl font-semibold text-slate-900 dark:text-slate-100">DIFRANI | DIFRANI | Hunter CRM AI</h1>
         <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Iniciá sesión para continuar</p>
 
         <form className="mt-6 flex flex-col gap-4" onSubmit={handleSubmit}>

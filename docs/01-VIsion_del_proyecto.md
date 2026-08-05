@@ -30,10 +30,10 @@
 
 15. Futuro del producto
 01. Introducción
-Hunter CRM AI
+DIFRANI | Hunter CRM AI
 Plataforma Inteligente de Prospección Comercial Asistida por IA
 
-Hunter CRM AI es una plataforma diseñada para ayudar a fabricantes, distribuidores y empresas B2B a descubrir nuevos clientes potenciales, iniciar el contacto comercial de forma automatizada y entregar únicamente los prospectos realmente interesados a un vendedor humano.
+DIFRANI | Hunter CRM AI es una plataforma diseñada para ayudar a fabricantes, distribuidores y empresas B2B a descubrir nuevos clientes potenciales, iniciar el contacto comercial de forma automatizada y entregar únicamente los prospectos realmente interesados a un vendedor humano.
 
 El sistema no busca reemplazar al equipo comercial.
 
@@ -79,7 +79,7 @@ detectar interés,
 medir resultados,
 aprender del proceso.
 
-Hunter CRM AI busca cubrir ese espacio.
+DIFRANI | Hunter CRM AI busca cubrir ese espacio.
 
 06. Público Objetivo
 
@@ -106,7 +106,7 @@ El producto no dependerá del rubro.
 
 07. Propuesta de Valor
 
-Hunter CRM AI transforma la prospección comercial en un proceso continuo y medible.
+DIFRANI | Hunter CRM AI transforma la prospección comercial en un proceso continuo y medible.
 
 En lugar de depender exclusivamente del trabajo manual de los vendedores, la plataforma genera oportunidades comerciales mediante un flujo automatizado que combina descubrimiento de prospectos, clasificación, campañas y transferencia inteligente al equipo de ventas.
 
@@ -124,7 +124,7 @@ Largo plazo
 Crear una plataforma SaaS comercial escalable.
 
 09. Arquitectura Funcional
-                   Hunter CRM AI
+                   DIFRANI | Hunter CRM AI
 
              ┌───────────────────────┐
              │       Core API         │
@@ -232,6 +232,6 @@ No obstante, el desarrollo estará orientado desde el primer día a soportar mú
 
 15. Futuro del Producto
 
-Hunter CRM AI evolucionará progresivamente incorporando inteligencia artificial más avanzada, nuevos canales de comunicación, análisis predictivo y herramientas de apoyo al equipo comercial.
+DIFRANI | Hunter CRM AI evolucionará progresivamente incorporando inteligencia artificial más avanzada, nuevos canales de comunicación, análisis predictivo y herramientas de apoyo al equipo comercial.
 
 La visión final no es construir un simple bot de mensajería, sino una plataforma capaz de asistir de forma integral todo el proceso de prospección comercial, manteniendo siempre al vendedor humano como responsable del cierre de la venta.

@@ -1,6 +1,6 @@
 📘 11 — Diseño del Frontend MVP V1
 
-Producto: Hunter CRM AI
+Producto: DIFRANI | Hunter CRM AI
 Versión: MVP V1
 Objetivo: Crear un panel comercial simple, rápido y orientado a la acción.
 Principio: El usuario debe poder pasar de prospecto → campaña → respuesta → Lead → venta con la menor cantidad de pasos posible.
@@ -77,7 +77,7 @@ Dashboard
 La navegación principal:
 
 ┌─────────────────────────────────────────┐
-│ Hunter CRM AI                           │
+│ DIFRANI | Hunter CRM AI                           │
 ├──────────────┬──────────────────────────┤
 │              │                          │
 │ Dashboard    │                          │

@@ -1,6 +1,6 @@
 📘 14 — Operación Comercial V1
 
-Producto: Hunter CRM AI
+Producto: DIFRANI | Hunter CRM AI
 Versión: MVP V1
 Objetivo: Definir cómo utilizar el sistema para generar la mayor cantidad posible de oportunidades comerciales y convertirlas en ventas, independientemente del tamaño, ubicación o recurrencia del cliente.
 

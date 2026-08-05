@@ -1,6 +1,6 @@
 📘 06 — Modelo de Base de Datos Detallado — MVP V1
 
-Producto: Hunter CRM AI
+Producto: DIFRANI | Hunter CRM AI
 Versión: 2.0
 Base de datos: PostgreSQL
 ORM: Entity Framework Core

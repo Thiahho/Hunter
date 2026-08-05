@@ -1,6 +1,6 @@
 📘 16 — Plan de Validación del MVP V1
 
-Producto: Hunter CRM AI
+Producto: DIFRANI | Hunter CRM AI
 Empresa objetivo inicial: Difrani
 Versión: MVP V1
 Horizonte: Hasta octubre de 2026

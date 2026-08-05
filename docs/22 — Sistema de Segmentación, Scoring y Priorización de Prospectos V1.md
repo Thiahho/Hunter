@@ -1,6 +1,6 @@
 📘 22 — Sistema de Segmentación, Scoring y Priorización de Prospectos V1
 
-Producto: Hunter CRM AI
+Producto: DIFRANI | Hunter CRM AI
 Empresa inicial: Difrani
 Versión: MVP V1
 Objetivo: Organizar y priorizar la base de prospectos para maximizar la cantidad de oportunidades comerciales y ventas generadas.

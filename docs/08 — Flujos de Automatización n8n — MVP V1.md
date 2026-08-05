@@ -1,6 +1,6 @@
 📘 08 — Flujos de Automatización n8n — MVP V1
 
-Producto: Hunter CRM AI
+Producto: DIFRANI | Hunter CRM AI
 Versión: MVP V1
 Orquestador: n8n
 Backend: ASP.NET Core

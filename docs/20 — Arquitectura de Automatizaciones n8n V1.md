@@ -1,6 +1,6 @@
 📘 20 — Arquitectura de Automatizaciones n8n V1
 
-Producto: Hunter CRM AI
+Producto: DIFRANI | Hunter CRM AI
 Empresa inicial: Difrani
 Versión: MVP V1
 Motor de automatización: n8n

@@ -1,6 +1,6 @@
 📘 12 — Integraciones y Proveedores V1
 
-Producto: Hunter CRM AI
+Producto: DIFRANI | Hunter CRM AI
 Versión: MVP V1
 Objetivo: Definir las integraciones externas necesarias para operar el MVP hasta octubre de 2026, priorizando bajo costo, velocidad de implementación y capacidad de validación comercial.
 

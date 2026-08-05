@@ -1,6 +1,6 @@
 📘 21 — Sistema de Prospección y Obtención de Prospectos V1
 
-Producto: Hunter CRM AI
+Producto: DIFRANI | Hunter CRM AI
 Empresa inicial: Difrani
 Versión: MVP V1
 Objetivo: Obtener la mayor cantidad posible de prospectos comerciales válidos para posteriormente convertirlos en clientes mediante contacto automatizado y cierre humano.

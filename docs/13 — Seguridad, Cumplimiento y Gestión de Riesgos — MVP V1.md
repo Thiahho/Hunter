@@ -1,6 +1,6 @@
 📘 13 — Seguridad, Cumplimiento y Gestión de Riesgos — MVP V1
 
-Producto: Hunter CRM AI
+Producto: DIFRANI | Hunter CRM AI
 Versión: MVP V1
 Objetivo: Definir las medidas técnicas y operativas necesarias para que el sistema pueda realizar prospección automatizada de forma controlada, segura y trazable.
 

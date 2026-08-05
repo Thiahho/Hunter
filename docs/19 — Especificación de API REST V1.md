@@ -1,6 +1,6 @@
 📘 19 — Especificación de API REST V1
 
-Producto: Hunter CRM AI
+Producto: DIFRANI | Hunter CRM AI
 Empresa inicial: Difrani
 Versión: MVP V1
 Stack: ASP.NET Core 8 + C# + EF Core + PostgreSQL

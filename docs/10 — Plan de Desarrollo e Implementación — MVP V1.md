@@ -1,6 +1,6 @@
 📘 10 — Plan de Desarrollo e Implementación — MVP V1
 
-Producto: Hunter CRM AI
+Producto: DIFRANI | Hunter CRM AI
 Versión: MVP V1
 Objetivo: Tener una primera versión funcional y operativa antes de octubre de 2026, aprovechando la etapa inicial de costos reducidos y validando el modelo comercial antes de construir la V2.
 

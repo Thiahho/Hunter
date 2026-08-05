@@ -1,6 +1,6 @@
 📘 17 — Especificación Funcional Completa V1
 
-Producto: Hunter CRM AI
+Producto: DIFRANI | Hunter CRM AI
 Empresa inicial: Difrani
 Versión: MVP V1
 Horizonte: Hasta octubre de 2026
