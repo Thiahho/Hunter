@@ -23,6 +23,11 @@ public class OpenStreetMapClient(
     // margen entre llamadas en vez de lanzarlas en paralelo.
     private const int NominatimThrottleMs = 1100;
 
+    // 429 (rate limit) y 504 (timeout del servidor público bajo carga) son fallas transitorias
+    // esperables en Overpass; se reintenta con backoff antes de darse por vencido. Otros errores
+    // (4xx propios de la query, etc.) no son transitorios y fallan en el primer intento.
+    private static readonly TimeSpan[] TransientRetryDelays = [TimeSpan.FromMilliseconds(300), TimeSpan.FromSeconds(1)];
+
     public async Task<IReadOnlyList<OpenStreetMapPlaceResult>> SearchAsync(OpenStreetMapSearchCriteria criteria, CancellationToken ct = default)
     {
         var clampedMax = Math.Clamp(criteria.MaxResults, 1, 300);
@@ -54,27 +59,9 @@ public class OpenStreetMapClient(
             query = BuildAreaQuery(localities, categoryFilters, timeoutSeconds, clampedMax);
         }
 
-        using var content = new FormUrlEncodedContent(new Dictionary<string, string> { ["data"] = query });
-        // Se postea contra la URL absoluta (no BaseAddress + ruta relativa, como en
-        // GooglePlacesClient): el Endpoint de Overpass ya es la URL completa del interprete,
-        // sin un esquema de versionado de rutas que amerite componerla en dos partes.
-        using var response = await httpClient.PostAsync(options.Value.Endpoint, content, ct);
-        var body = await response.Content.ReadAsStringAsync(ct);
-
-        if (!response.IsSuccessStatusCode)
-        {
-            // 429 (rate limit) y 504 (timeout del propio Overpass, normal bajo carga en el
-            // servidor público) son esperables bajo uso normal: se distinguen en el log para no
-            // confundirlos con un error real de la query.
-            var reason = response.StatusCode switch
-            {
-                HttpStatusCode.TooManyRequests => "rate limit de Overpass alcanzado",
-                HttpStatusCode.GatewayTimeout => "timeout del servidor de Overpass",
-                _ => body
-            };
-            logger.LogWarning("[OpenStreetMap] Búsqueda fallida para \"{Localities}\": {Status} {Reason}", logLabel, response.StatusCode, reason);
+        var body = await PostWithRetryAsync(query, logLabel, ct);
+        if (body is null)
             return [];
-        }
 
         OverpassResponse? parsed;
         try
@@ -100,6 +87,43 @@ public class OpenStreetMapClient(
             .DistinctBy(r => r.ElementId)
             .Take(clampedMax)
             .ToList();
+    }
+
+    // Se postea contra la URL absoluta (no BaseAddress + ruta relativa, como en
+    // GooglePlacesClient): el Endpoint de Overpass ya es la URL completa del interprete, sin un
+    // esquema de versionado de rutas que amerite componerla en dos partes.
+    // Devuelve null (ya logueado) si falla después de agotar los reintentos en fallas
+    // transitorias, o de inmediato en fallas no transitorias.
+    private async Task<string?> PostWithRetryAsync(string query, string logLabel, CancellationToken ct)
+    {
+        for (var attempt = 0; ; attempt++)
+        {
+            using var content = new FormUrlEncodedContent(new Dictionary<string, string> { ["data"] = query });
+            using var response = await httpClient.PostAsync(options.Value.Endpoint, content, ct);
+            var body = await response.Content.ReadAsStringAsync(ct);
+
+            if (response.IsSuccessStatusCode)
+                return body;
+
+            var isTransient = response.StatusCode is HttpStatusCode.TooManyRequests or HttpStatusCode.GatewayTimeout;
+            if (isTransient && attempt < TransientRetryDelays.Length)
+            {
+                logger.LogWarning(
+                    "[OpenStreetMap] {Status} para \"{Localities}\" (intento {Attempt}/{Max}), reintentando...",
+                    response.StatusCode, logLabel, attempt + 1, TransientRetryDelays.Length + 1);
+                await Task.Delay(TransientRetryDelays[attempt], ct);
+                continue;
+            }
+
+            var reason = response.StatusCode switch
+            {
+                HttpStatusCode.TooManyRequests => "rate limit de Overpass alcanzado",
+                HttpStatusCode.GatewayTimeout => "timeout del servidor de Overpass",
+                _ => body
+            };
+            logger.LogWarning("[OpenStreetMap] Búsqueda fallida para \"{Localities}\": {Status} {Reason}", logLabel, response.StatusCode, reason);
+            return null;
+        }
     }
 
     private async Task<List<(string Locality, double Lat, double Lon)>> GeocodeLocalitiesAsync(List<string> localities, CancellationToken ct)

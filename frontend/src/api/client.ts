@@ -44,7 +44,15 @@ async function refreshAccessToken(): Promise<string | null> {
 
 apiClient.interceptors.response.use(
   (response) => response,
-  async (error: AxiosError) => {
+  async (error: AxiosError<ApiResponse<unknown>>) => {
+    // Axios solo pone en error.message el texto genérico ("Request failed with status code
+    // 400"); acá se lo pisa con el message real del backend (ApiResponse.message) para que los
+    // `error instanceof Error ? error.message : ...` de las páginas muestren la razón real.
+    const apiMessage = error.response?.data?.message;
+    if (apiMessage) {
+      error.message = apiMessage;
+    }
+
     const originalRequest = error.config as (InternalAxiosRequestConfig & { _retry?: boolean }) | undefined;
 
     if (error.response?.status !== 401 || !originalRequest || originalRequest._retry) {
