@@ -153,6 +153,15 @@ public class OpenStreetMapClient(
     // inyectar cláusulas propias).
     private static string EscapeQl(string value) => value.Replace("\\", "\\\\").Replace("\"", "\\\"");
 
+    // Filtro de teléfono como par de claves exactas, no como regex sobre el nombre de la clave
+    // (["~"^(contact:)?phone$"~"."]): esa forma obligaba a Overpass a escanear todos los tags de
+    // cada elemento candidato en vez de usar el índice de la clave, y bajo carga pública eso solo
+    // alcanza a evaluar una fracción del área antes de pisar el [timeout:N] (confirmado a mano:
+    // la versión regex tardaba >15s y volvía con remark de timeout y 0 elementos para Moreno /
+    // shop=car_repair, mientras que estas dos cláusulas exactas resuelven en ~2s). El dedup por
+    // ElementId en SearchAsync ya cubre el caso de un elemento con ambos tags.
+    private static readonly string[] PhoneKeyFilters = ["[\"phone\"]", "[\"contact:phone\"]"];
+
     // Único mapeo de ProspectCategory a un filtro de tag de OSM: Lubricentro no tiene un
     // shop=... propio en OSM, así que se modela como taller (car_repair) que además ofrece el
     // servicio específico de cambio de aceite.
@@ -180,7 +189,8 @@ public class OpenStreetMapClient(
             var lonStr = lon.ToString(CultureInfo.InvariantCulture);
             foreach (var filter in categoryFilters)
             {
-                sb.AppendLine($"  nwr(around:{radiusMeters},{latStr},{lonStr}){filter}[~\"^(contact:)?phone$\"~\".\"];");
+                foreach (var phoneFilter in PhoneKeyFilters)
+                    sb.AppendLine($"  nwr(around:{radiusMeters},{latStr},{lonStr}){filter}{phoneFilter};");
             }
         }
         sb.AppendLine(");");
@@ -201,7 +211,10 @@ public class OpenStreetMapClient(
         for (var i = 0; i < localities.Count; i++)
         {
             foreach (var filter in categoryFilters)
-                sb.AppendLine($"  nwr{filter}(area.zona{i})[~\"^(contact:)?phone$\"~\".\"];");
+            {
+                foreach (var phoneFilter in PhoneKeyFilters)
+                    sb.AppendLine($"  nwr{filter}(area.zona{i}){phoneFilter};");
+            }
         }
         sb.AppendLine(");");
         sb.AppendLine($"out center {maxResults};");

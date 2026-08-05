@@ -132,9 +132,10 @@ public class OpenStreetMapClientTests
         Assert.Equal(2, nominatim.Queries.Count);
         var decoded = HttpUtility.UrlDecode(handler.LastRequestBody);
         Assert.Contains("around:10000,-34.65,-58.72", decoded);
-        // Un solo rubro (Workshop) x una sola localidad geocodificada = una sola cláusula
-        // "around:"; la localidad que no geocodificó no debe generar ninguna.
-        Assert.Equal(2, decoded!.Split("around:").Length);
+        // Un solo rubro (Workshop) x una sola localidad geocodificada x 2 filtros de teléfono
+        // (phone / contact:phone) = dos cláusulas "around:"; la localidad que no geocodificó no
+        // debe generar ninguna.
+        Assert.Equal(3, decoded!.Split("around:").Length);
     }
 
     [Fact]
