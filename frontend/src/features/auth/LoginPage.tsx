@@ -3,6 +3,7 @@ import { useMutation } from '@tanstack/react-query';
 import { useNavigate } from 'react-router';
 import { login } from '../../api/auth';
 import { useAuthStore } from '../../store/authStore';
+import { PasswordInput } from '../../components/PasswordInput';
 
 export function LoginPage() {
   const [email, setEmail] = useState('');
@@ -49,9 +50,8 @@ export function LoginPage() {
             <label htmlFor="password" className="block text-sm font-medium text-slate-700 dark:text-slate-300">
               Contraseña
             </label>
-            <input
+            <PasswordInput
               id="password"
-              type="password"
               required
               autoComplete="current-password"
               value={password}

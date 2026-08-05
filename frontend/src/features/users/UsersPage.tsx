@@ -9,6 +9,7 @@ import {
   type UserArea,
   type UserDto,
 } from '../../api/users';
+import { PasswordInput } from '../../components/PasswordInput';
 
 const roleOptions: { value: InvitableRole; label: string }[] = [
   { value: 'ADMIN', label: 'Admin' },
@@ -116,8 +117,7 @@ export function UsersPage() {
         </div>
         <div>
           <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Contraseña</label>
-          <input
-            type="password"
+          <PasswordInput
             required
             minLength={8}
             value={password}
