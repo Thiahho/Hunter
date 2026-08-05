@@ -178,7 +178,7 @@ public class InboundMessageService(
         // WhatsApp nunca debe demorar ni revertir la persistencia del lead. Solo se notifica en
         // un lead genuinamente nuevo, no en cada mensaje de seguimiento de un lead ya abierto.
         if (lead is not null && leadCreated)
-            await NotifyAssigneeAsync(lead, prospect, request.Content, ct);
+            await NotifyAssigneeAsync(lead, prospect, request.Content, prospectContact.Value, ct);
         else if (lead is not null)
             logger.LogInformation(
                 "[LeadHandoff] Lead {LeadId} reutilizado (ya estaba abierto), no se reenvía notificación de handoff.", lead.Id);
@@ -315,7 +315,7 @@ public class InboundMessageService(
     // independientes (cada uno solo si el usuario tiene el dato cargado). Nunca debe romper el
     // procesamiento del webhook: un fallo acá (de red, de configuración, lo que sea) solo se
     // loguea, porque un 500 en el webhook hace que Meta reintente el mismo evento para siempre.
-    private async Task NotifyAssigneeAsync(Lead lead, Prospect prospect, string prospectMessage, CancellationToken ct)
+    private async Task NotifyAssigneeAsync(Lead lead, Prospect prospect, string prospectMessage, string prospectWhatsApp, CancellationToken ct)
     {
         try
         {
@@ -335,7 +335,7 @@ public class InboundMessageService(
                 return;
             }
 
-            var freeText = LeadHandoffMessageBuilder.BuildFreeText(prospect, prospectMessage);
+            var freeText = LeadHandoffMessageBuilder.BuildFreeText(prospect, prospectMessage, prospectWhatsApp, assignee.FirstName);
 
             await NotifyByWhatsAppAsync(lead, assignee.Phone, prospect, prospectMessage, freeText, ct);
             await NotifyByTelegramAsync(lead, assignee.TelegramChatId, freeText, ct);

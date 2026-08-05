@@ -16,13 +16,14 @@ public class LeadHandoffMessageBuilderTests
     [Fact]
     public void BuildFreeText_FullProspect_IncludesAllLines()
     {
-        var text = LeadHandoffMessageBuilder.BuildFreeText(FullProspect(), "¿Me pasás catálogo?");
+        var text = LeadHandoffMessageBuilder.BuildFreeText(FullProspect(), "¿Me pasás catálogo?", "5491112345678");
 
         Assert.Contains("🔥 NUEVO LEAD", text);
         Assert.Contains("Repuestos Oeste", text);
         Assert.Contains("📍 Moreno", text);
         Assert.Contains("🏷 Casa de repuestos", text);
         Assert.Contains("📊 Score: 92", text);
+        Assert.Contains("📱 5491112345678", text);
         Assert.Contains("¿Me pasás catálogo?", text);
     }
 
@@ -31,7 +32,7 @@ public class LeadHandoffMessageBuilderTests
     {
         var prospect = new Prospect { BusinessName = "Taller Juan", Category = ProspectCategory.Workshop };
 
-        var text = LeadHandoffMessageBuilder.BuildFreeText(prospect, "hola");
+        var text = LeadHandoffMessageBuilder.BuildFreeText(prospect, "hola", "5491112345678");
 
         Assert.DoesNotContain("📍", text);
         Assert.DoesNotContain("📊", text);
@@ -43,10 +44,40 @@ public class LeadHandoffMessageBuilderTests
     {
         var longMessage = new string('a', 500);
 
-        var text = LeadHandoffMessageBuilder.BuildFreeText(FullProspect(), longMessage);
+        var text = LeadHandoffMessageBuilder.BuildFreeText(FullProspect(), longMessage, "5491112345678");
 
         Assert.Contains("…", text);
         Assert.DoesNotContain(new string('a', 400), text);
+    }
+
+    [Fact]
+    public void BuildFreeText_NoAssigneeFirstName_OmitsSuggestedReply()
+    {
+        var text = LeadHandoffMessageBuilder.BuildFreeText(FullProspect(), "hola", "5491112345678");
+
+        Assert.DoesNotContain("Sugerencia de respuesta", text);
+        Assert.DoesNotContain("Mi nombre es", text);
+    }
+
+    [Fact]
+    public void BuildFreeText_WithAssigneeFirstName_IncludesSuggestedReply_UsingContactNameWhenPresent()
+    {
+        var prospect = FullProspect();
+        prospect.ContactName = "Marcelo";
+
+        var text = LeadHandoffMessageBuilder.BuildFreeText(prospect, "hola", "5491112345678", "Juan");
+
+        Assert.Contains("💬 Sugerencia de respuesta:", text);
+        Assert.Contains("Hola Marcelo!", text);
+        Assert.Contains("Mi nombre es Juan", text);
+    }
+
+    [Fact]
+    public void BuildFreeText_WithAssigneeFirstName_NoContactName_UsesBusinessNameInGreeting()
+    {
+        var text = LeadHandoffMessageBuilder.BuildFreeText(FullProspect(), "hola", "5491112345678", "Juan");
+
+        Assert.Contains("Hola Repuestos Oeste!", text);
     }
 
     [Fact]

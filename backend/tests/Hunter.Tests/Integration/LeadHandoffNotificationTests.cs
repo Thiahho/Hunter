@@ -81,6 +81,8 @@ public class LeadHandoffNotificationTests
         Assert.Contains("Moreno", handoff.Content);
         Assert.Contains("92", handoff.Content);
         Assert.Contains("me interesa, pasame info", handoff.Content);
+        Assert.Contains("📱 5491112345678", handoff.Content); // el vendedor puede responder directo sin ir al CRM
+        Assert.Contains("Mi nombre es Juan", handoff.Content); // sugerencia de respuesta con el nombre del vendedor asignado
         Assert.True(handoff.PreferFreeText); // sin HandoffTemplateName configurada, cae a texto libre
     }
 

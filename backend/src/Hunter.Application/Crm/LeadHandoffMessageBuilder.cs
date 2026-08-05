@@ -26,7 +26,11 @@ public static class LeadHandoffMessageBuilder
         [ProspectCategory.Other] = "Otro"
     };
 
-    public static string BuildFreeText(Prospect prospect, string prospectMessage)
+    // prospectWhatsApp: el vendedor lo necesita para poder responderle directo sin ir a buscarlo
+    // al CRM. assigneeFirstName es opcional (nombre del usuario logueado que recibe el handoff):
+    // si viene, se agrega una sugerencia de respuesta lista para copiar y pegar; si no, se omite
+    // ese bloque entero en vez de dejar un saludo con nombre vacío.
+    public static string BuildFreeText(Prospect prospect, string prospectMessage, string prospectWhatsApp, string? assigneeFirstName = null)
     {
         var sb = new StringBuilder();
         sb.AppendLine("🔥 NUEVO LEAD");
@@ -42,9 +46,19 @@ public static class LeadHandoffMessageBuilder
         if (prospect.CommercialScore is not null)
             sb.AppendLine($"📊 Score: {prospect.CommercialScore}");
 
+        sb.AppendLine($"📱 {prospectWhatsApp}");
+
         sb.AppendLine();
         sb.AppendLine("Mensaje:");
-        sb.Append($"\"{Truncate(prospectMessage)}\"");
+        sb.AppendLine($"\"{Truncate(prospectMessage)}\"");
+
+        if (string.IsNullOrWhiteSpace(assigneeFirstName))
+            return sb.ToString().TrimEnd();
+
+        var greetingName = string.IsNullOrWhiteSpace(prospect.ContactName) ? prospect.BusinessName : prospect.ContactName;
+        sb.AppendLine();
+        sb.AppendLine("💬 Sugerencia de respuesta:");
+        sb.Append($"\"Hola {greetingName}! ¿Cómo estás? Mi nombre es {assigneeFirstName}, un gusto saludarte.\"");
 
         return sb.ToString();
     }
