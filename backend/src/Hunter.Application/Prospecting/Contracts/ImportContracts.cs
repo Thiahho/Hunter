@@ -17,11 +17,14 @@ public record GooglePlacesImportRequest(string Query, int MaxResults = 10);
 // Categories vacío/null = se buscan todos los rubros soportados por OSM
 // (OpenStreetMapCategories.Supported). RadiusKm null = búsqueda por límite administrativo
 // (comportamiento original); con valor, se geocodifica cada localidad y se busca en ese radio.
+// Keywords: rubros libres (no restringidos a Categories) que se buscan por coincidencia en el
+// nombre del comercio — ver OpenStreetMapCategories.Supported y OpenStreetMapClient.
 public record OpenStreetMapImportRequest(
     IReadOnlyCollection<string> Localities,
     IReadOnlyCollection<ProspectCategory>? Categories = null,
     int? RadiusKm = null,
-    int MaxResults = 50);
+    int MaxResults = 50,
+    IReadOnlyCollection<string>? Keywords = null);
 
 // Detalle de una fila del batch para la tabla de preview (nombre, contacto, rubro, por qué
 // quedó Duplicate/Invalid si aplica). Se arma a partir de lo que ya se persiste en

@@ -94,8 +94,8 @@ const inputClass =
 
 export function ProspectSearchPage() {
   const [selectedCategories, setSelectedCategories] = useState<ProspectCategory[]>([]);
+  const [keywords, setKeywords] = useState<string[]>([]);
   const [categoryInput, setCategoryInput] = useState('');
-  const [categoryError, setCategoryError] = useState<string | null>(null);
   const [localityInput, setLocalityInput] = useState('');
   const [localities, setLocalities] = useState<string[]>([]);
   const [radiusKm, setRadiusKm] = useState(10);
@@ -194,6 +194,7 @@ export function ProspectSearchPage() {
     scheduleMutation.mutate({
       localities,
       categories: selectedCategories.length > 0 ? selectedCategories : undefined,
+      keywords: keywords.length > 0 ? keywords : undefined,
       radiusKm,
       maxResults,
       campaignId: Number(scheduleCampaignId),
@@ -207,18 +208,19 @@ export function ProspectSearchPage() {
     setSelectedIds(new Set());
   }
 
+  // Si el texto matchea uno de los 5 rubros automotrices conocidos, se agrega como categoría
+  // (búsqueda eficiente por tag exacto de OSM). Si no, se agrega como término libre: se busca por
+  // coincidencia en el nombre del comercio, sin restringirse a esos 5 rubros.
   function addCategory() {
     const trimmed = categoryInput.trim();
     if (!trimmed) return;
 
     const resolved = resolveCategoryFromText(trimmed);
-    if (!resolved) {
-      setCategoryError(`No se reconoce el rubro "${trimmed}". Probá con: repuestería, taller, lubricentro, gomería o concesionaria.`);
-      return;
+    if (resolved) {
+      setSelectedCategories((prev) => (prev.includes(resolved) ? prev : [...prev, resolved]));
+    } else {
+      setKeywords((prev) => (prev.includes(trimmed) ? prev : [...prev, trimmed]));
     }
-
-    setCategoryError(null);
-    setSelectedCategories((prev) => (prev.includes(resolved) ? prev : [...prev, resolved]));
     setCategoryInput('');
   }
 
@@ -231,6 +233,10 @@ export function ProspectSearchPage() {
 
   function removeCategory(category: ProspectCategory) {
     setSelectedCategories((prev) => prev.filter((c) => c !== category));
+  }
+
+  function removeKeyword(keyword: string) {
+    setKeywords((prev) => prev.filter((k) => k !== keyword));
   }
 
   function addLocality() {
@@ -268,6 +274,7 @@ export function ProspectSearchPage() {
     searchMutation.mutate({
       localities,
       categories: selectedCategories.length > 0 ? selectedCategories : undefined,
+      keywords: keywords.length > 0 ? keywords : undefined,
       radiusKm,
       maxResults,
     });
@@ -304,13 +311,10 @@ export function ProspectSearchPage() {
             <input
               type="text"
               value={categoryInput}
-              onChange={(e) => {
-                setCategoryInput(e.target.value);
-                if (categoryError) setCategoryError(null);
-              }}
+              onChange={(e) => setCategoryInput(e.target.value)}
               onKeyDown={handleCategoryKeyDown}
               list="category-suggestions"
-              placeholder="ej. gomería, taller, lubricentro"
+              placeholder="ej. gomería, taller, lubricentro, o cualquier otro rubro"
               className={inputClass}
             />
             <datalist id="category-suggestions">
@@ -326,8 +330,7 @@ export function ProspectSearchPage() {
               Agregar
             </button>
           </div>
-          {categoryError && <p className="mt-1 text-xs text-red-600 dark:text-red-400">{categoryError}</p>}
-          {selectedCategories.length > 0 && (
+          {(selectedCategories.length > 0 || keywords.length > 0) && (
             <div className="mt-2 flex flex-wrap gap-2">
               {selectedCategories.map((category) => (
                 <span
@@ -345,9 +348,29 @@ export function ProspectSearchPage() {
                   </button>
                 </span>
               ))}
+              {keywords.map((keyword) => (
+                <span
+                  key={keyword}
+                  className="flex items-center gap-1 rounded-full bg-slate-100 dark:bg-slate-800 px-3 py-1 text-xs font-medium text-slate-600 dark:text-slate-300"
+                  title="Búsqueda libre por nombre de negocio"
+                >
+                  {keyword}
+                  <button
+                    type="button"
+                    onClick={() => removeKeyword(keyword)}
+                    className="text-slate-400 hover:text-slate-700 dark:hover:text-slate-100"
+                    aria-label={`Quitar ${keyword}`}
+                  >
+                    ×
+                  </button>
+                </span>
+              ))}
             </div>
           )}
-          <p className="mt-1 text-xs text-slate-400">Sin selección = se buscan todos los rubros.</p>
+          <p className="mt-1 text-xs text-slate-400">
+            Sin selección = se buscan todos los rubros. Un rubro fuera de la lista (ej. "peluquería") se agrega como
+            término libre y se busca por nombre de negocio.
+          </p>
         </div>
 
         <div>

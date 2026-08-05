@@ -56,7 +56,7 @@ public class ScheduledProspectAutomationService(
             return Result<ScheduledProspectAutomationDto>.Failure(
                 $"La campaña está en estado {campaign.Status}, no admite sumarle destinatarios nuevos.");
 
-        var criteria = new OpenStreetMapImportRequest(localities, request.Categories, request.RadiusKm, request.MaxResults);
+        var criteria = new OpenStreetMapImportRequest(localities, request.Categories, request.RadiusKm, request.MaxResults, request.Keywords);
 
         var automation = new ScheduledProspectAutomation
         {
@@ -248,6 +248,7 @@ public class ScheduledProspectAutomationService(
             automation.Status,
             automation.RunAt,
             automation.ResultSummary,
-            automation.CreatedAt);
+            automation.CreatedAt,
+            criteria?.Keywords);
     }
 }

@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Net;
 using System.Text;
 using System.Text.Json.Serialization;
+using System.Text.RegularExpressions;
 using Hunter.Application.Prospecting;
 using Hunter.Domain.Prospecting;
 using Microsoft.Extensions.Logging;
@@ -35,8 +36,10 @@ public class OpenStreetMapClient(
         if (localities.Count == 0)
             return [];
 
-        var categoryFilters = criteria.Categories.Select(CategoryToOsmFilter).ToList();
-        if (categoryFilters.Count == 0)
+        var categoryFilters = criteria.Categories.Select(CategoryToOsmFilter);
+        var keywordFilters = (criteria.Keywords ?? []).Select(KeywordToOsmFilter);
+        var filters = categoryFilters.Concat(keywordFilters).ToList();
+        if (filters.Count == 0)
             return [];
 
         var logLabel = string.Join(", ", localities);
@@ -52,11 +55,11 @@ public class OpenStreetMapClient(
                 return [];
             }
 
-            query = BuildRadiusQuery(centers, categoryFilters, radiusKm * 1000, timeoutSeconds, clampedMax);
+            query = BuildRadiusQuery(centers, filters, radiusKm * 1000, timeoutSeconds, clampedMax);
         }
         else
         {
-            query = BuildAreaQuery(localities, categoryFilters, timeoutSeconds, clampedMax);
+            query = BuildAreaQuery(localities, filters, timeoutSeconds, clampedMax);
         }
 
         var body = await PostWithRetryAsync(query, logLabel, ct);
@@ -176,8 +179,16 @@ public class OpenStreetMapClient(
             nameof(category), category, "Categoría no soportada por OpenStreetMap (ver OpenStreetMapCategories.Supported).")
     };
 
+    // Búsqueda libre por rubro no mapeado a un tag conocido (ej. "peluquería"): en vez de un tag
+    // exacto, matchea por coincidencia (case-insensitive) en el nombre del comercio. Regex.Escape
+    // neutraliza metacaracteres de regex en lo que escribió el usuario (para que "Auto+Repuestos"
+    // se busque literal y no falle o degenere en un patrón costoso para Overpass); EscapeQl encima
+    // blinda la interpolación en el string de la query QL.
+    private static string KeywordToOsmFilter(string keyword) =>
+        $"[\"name\"~\"{EscapeQl(Regex.Escape(keyword))}\",i]";
+
     private static string BuildRadiusQuery(
-        List<(string Locality, double Lat, double Lon)> centers, List<string> categoryFilters,
+        List<(string Locality, double Lat, double Lon)> centers, List<string> filters,
         int radiusMeters, int timeoutSeconds, int maxResults)
     {
         var sb = new StringBuilder();
@@ -187,7 +198,7 @@ public class OpenStreetMapClient(
         {
             var latStr = lat.ToString(CultureInfo.InvariantCulture);
             var lonStr = lon.ToString(CultureInfo.InvariantCulture);
-            foreach (var filter in categoryFilters)
+            foreach (var filter in filters)
             {
                 foreach (var phoneFilter in PhoneKeyFilters)
                     sb.AppendLine($"  nwr(around:{radiusMeters},{latStr},{lonStr}){filter}{phoneFilter};");
@@ -198,7 +209,7 @@ public class OpenStreetMapClient(
         return sb.ToString();
     }
 
-    private static string BuildAreaQuery(List<string> localities, List<string> categoryFilters, int timeoutSeconds, int maxResults)
+    private static string BuildAreaQuery(List<string> localities, List<string> filters, int timeoutSeconds, int maxResults)
     {
         var sb = new StringBuilder();
         sb.AppendLine($"[out:json][timeout:{timeoutSeconds}];");
@@ -210,7 +221,7 @@ public class OpenStreetMapClient(
         sb.AppendLine("(");
         for (var i = 0; i < localities.Count; i++)
         {
-            foreach (var filter in categoryFilters)
+            foreach (var filter in filters)
             {
                 foreach (var phoneFilter in PhoneKeyFilters)
                     sb.AppendLine($"  nwr{filter}(area.zona{i}){phoneFilter};");

@@ -93,17 +93,30 @@ public class ImportService(
         if (localities.Count > MaxOpenStreetMapLocalities)
             return Result<ImportPreviewDto>.Failure($"Máximo {MaxOpenStreetMapLocalities} localidades por búsqueda.");
 
-        var categories = request.Categories is { Count: > 0 } ? request.Categories.Distinct().ToList() : OpenStreetMapCategories.Supported.ToList();
+        var categories = request.Categories is { Count: > 0 } ? request.Categories.Distinct().ToList() : [];
         var unsupported = categories.Except(OpenStreetMapCategories.Supported).ToList();
         if (unsupported.Count > 0)
             return Result<ImportPreviewDto>.Failure($"Rubro(s) no soportados por OpenStreetMap: {string.Join(", ", unsupported)}.");
+
+        var keywords = (request.Keywords ?? [])
+            .Select(k => k?.Trim())
+            .Where(k => !string.IsNullOrWhiteSpace(k))
+            .Select(k => k!)
+            .Distinct()
+            .ToList();
+
+        // Sin categorías ni rubros libres = comportamiento original (se buscan todos los rubros
+        // soportados). Si el usuario puso al menos un rubro libre, no se agregan los 5 rubros
+        // automotrices de más: solo quiere ese término.
+        if (categories.Count == 0 && keywords.Count == 0)
+            categories = OpenStreetMapCategories.Supported.ToList();
 
         if (request.RadiusKm is int radiusKm && (radiusKm < MinOpenStreetMapRadiusKm || radiusKm > MaxOpenStreetMapRadiusKm))
             return Result<ImportPreviewDto>.Failure($"El radio debe estar entre {MinOpenStreetMapRadiusKm} y {MaxOpenStreetMapRadiusKm} km.");
 
         var organizationId = currentUser.OrganizationId!.Value;
 
-        var criteria = new OpenStreetMapSearchCriteria(localities, categories, request.RadiusKm, request.MaxResults);
+        var criteria = new OpenStreetMapSearchCriteria(localities, categories, request.RadiusKm, request.MaxResults, keywords);
         var places = await openStreetMapClient.SearchAsync(criteria, ct);
         if (places.Count == 0)
             return Result<ImportPreviewDto>.Failure("OpenStreetMap no devolvió resultados (o la búsqueda falló).");

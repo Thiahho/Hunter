@@ -11,7 +11,8 @@ public record ScheduleProspectAutomationRequest(
     int RadiusKm,
     int MaxResults,
     int CampaignId,
-    DateTimeOffset ScheduledAt);
+    DateTimeOffset ScheduledAt,
+    IReadOnlyCollection<string>? Keywords = null);
 
 public record ScheduledProspectAutomationDto(
     int Id,
@@ -25,4 +26,5 @@ public record ScheduledProspectAutomationDto(
     ScheduledAutomationStatus Status,
     DateTimeOffset? RunAt,
     string? ResultSummary,
-    DateTimeOffset CreatedAt);
+    DateTimeOffset CreatedAt,
+    IReadOnlyCollection<string>? Keywords = null);

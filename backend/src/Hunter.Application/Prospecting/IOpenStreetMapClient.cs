@@ -17,7 +17,11 @@ public record OpenStreetMapSearchCriteria(
     IReadOnlyCollection<string> Localities,
     IReadOnlyCollection<ProspectCategory> Categories,
     int? RadiusKm,
-    int MaxResults);
+    int MaxResults,
+    // Términos de búsqueda libre (rubros no mapeados a un tag conocido de OSM, ej.
+    // "peluquería"): se buscan por coincidencia en el nombre del comercio en vez de por tag
+    // exacto. Ver OpenStreetMapClient.KeywordToOsmFilter.
+    IReadOnlyCollection<string>? Keywords = null);
 
 public static class OpenStreetMapCategories
 {

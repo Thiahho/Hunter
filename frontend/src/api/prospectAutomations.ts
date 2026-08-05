@@ -17,6 +17,7 @@ export interface ScheduledProspectAutomationDto {
   runAt: string | null;
   resultSummary: string | null;
   createdAt: string;
+  keywords: string[] | null;
 }
 
 export interface ScheduleProspectAutomationRequest {
@@ -26,6 +27,7 @@ export interface ScheduleProspectAutomationRequest {
   maxResults: number;
   campaignId: number;
   scheduledAt: string;
+  keywords?: string[];
 }
 
 export async function listProspectAutomations(): Promise<ScheduledProspectAutomationDto[]> {

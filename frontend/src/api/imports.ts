@@ -7,6 +7,7 @@ export interface OpenStreetMapImportRequest {
   categories?: ProspectCategory[];
   radiusKm?: number;
   maxResults?: number;
+  keywords?: string[];
 }
 
 export interface ImportPreviewDto {

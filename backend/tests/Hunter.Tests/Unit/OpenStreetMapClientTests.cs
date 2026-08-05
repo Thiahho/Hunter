@@ -286,6 +286,44 @@ public class OpenStreetMapClientTests
     }
 
     [Fact]
+    public async Task SearchAsync_KeywordOnly_BuildsNameRegexFilterAndSkipsUnrequestedCategories()
+    {
+        var (client, handler, _) = CreateClient(HttpStatusCode.OK, """{"elements":[]}""");
+
+        await client.SearchAsync(new OpenStreetMapSearchCriteria(["Moreno"], [], null, 50, ["Peluquería"]));
+
+        Assert.Equal(1, handler.CallCount);
+        var decoded = HttpUtility.UrlDecode(handler.LastRequestBody);
+        Assert.Contains(@"[""name""~""Peluquería"",i]", decoded);
+        Assert.DoesNotContain("\"shop\"", decoded);
+    }
+
+    [Fact]
+    public async Task SearchAsync_KeywordWithRegexMetacharacters_IsEscapedBeforeSendingQuery()
+    {
+        var (client, handler, _) = CreateClient(HttpStatusCode.OK, """{"elements":[]}""");
+
+        await client.SearchAsync(new OpenStreetMapSearchCriteria(["Moreno"], [], null, 50, ["Auto+Repuestos"]));
+
+        var decoded = HttpUtility.UrlDecode(handler.LastRequestBody);
+        // Regex.Escape antepone "\" a "+"; EscapeQl duplica ese backslash para el string literal de
+        // Overpass QL, así que en la query cruda esperamos dos backslashes antes del "+".
+        Assert.Contains(@"[""name""~""Auto\\+Repuestos"",i]", decoded);
+    }
+
+    [Fact]
+    public async Task SearchAsync_CategoriesAndKeywordsCombined_BuildsFiltersForBoth()
+    {
+        var (client, handler, _) = CreateClient(HttpStatusCode.OK, """{"elements":[]}""");
+
+        await client.SearchAsync(new OpenStreetMapSearchCriteria(["Moreno"], [ProspectCategory.Workshop], null, 50, ["Peluquería"]));
+
+        var decoded = HttpUtility.UrlDecode(handler.LastRequestBody);
+        Assert.Contains("\"shop\"=\"car_repair\"", decoded);
+        Assert.Contains(@"[""name""~""Peluquería"",i]", decoded);
+    }
+
+    [Fact]
     public async Task SearchAsync_LocalityWithQuotes_EscapesBeforeSendingQuery()
     {
         var (client, handler, _) = CreateClient(HttpStatusCode.OK, """{"elements":[]}""");
