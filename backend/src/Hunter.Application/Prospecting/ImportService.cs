@@ -79,6 +79,15 @@ public class ImportService(
     private const int MinOpenStreetMapRadiusKm = 1;
     private const int MaxOpenStreetMapRadiusKm = 50;
 
+    // Radio que se usa cuando hay rubros libres (Keywords) y no se pidió uno explícito. Sin esto,
+    // un rubro libre sin radio cae en modo administrativo (busca en todo el partido/municipio vía
+    // OpenStreetMapClient.BuildAreaQuery) — un name~regex ahí escanea todo lo que tenga nombre en
+    // esa área completa (no solo negocios) y pisa el timeout de Overpass en partidos grandes
+    // (confirmado a mano: timeout a los 73s buscando en Morón sin radio). Con radio, en cambio, se
+    // usa BuildRadiusQuery (nwr(around:...)), que sí resuelve rápido porque acota geográficamente
+    // antes de evaluar el regex.
+    private const int DefaultKeywordRadiusKm = 20;
+
     public async Task<Result<ImportPreviewDto>> ImportFromOpenStreetMapAsync(OpenStreetMapImportRequest request, CancellationToken ct = default)
     {
         var localities = (request.Localities ?? [])
@@ -111,12 +120,13 @@ public class ImportService(
         if (categories.Count == 0 && keywords.Count == 0)
             categories = OpenStreetMapCategories.Supported.ToList();
 
-        if (request.RadiusKm is int radiusKm && (radiusKm < MinOpenStreetMapRadiusKm || radiusKm > MaxOpenStreetMapRadiusKm))
+        var radiusKm = request.RadiusKm ?? (keywords.Count > 0 ? DefaultKeywordRadiusKm : (int?)null);
+        if (radiusKm is int radius && (radius < MinOpenStreetMapRadiusKm || radius > MaxOpenStreetMapRadiusKm))
             return Result<ImportPreviewDto>.Failure($"El radio debe estar entre {MinOpenStreetMapRadiusKm} y {MaxOpenStreetMapRadiusKm} km.");
 
         var organizationId = currentUser.OrganizationId!.Value;
 
-        var criteria = new OpenStreetMapSearchCriteria(localities, categories, request.RadiusKm, request.MaxResults, keywords);
+        var criteria = new OpenStreetMapSearchCriteria(localities, categories, radiusKm, request.MaxResults, keywords);
         var places = await openStreetMapClient.SearchAsync(criteria, ct);
         if (places.Count == 0)
             return Result<ImportPreviewDto>.Failure("OpenStreetMap no devolvió resultados (o la búsqueda falló).");
