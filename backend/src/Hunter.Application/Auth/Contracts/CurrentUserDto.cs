@@ -5,6 +5,8 @@ public record CurrentUserDto(
     string FirstName,
     string LastName,
     string Email,
+    string? Phone,
+    string? TelegramChatId,
     int OrganizationId,
     IReadOnlyCollection<string> Roles,
     bool TelegramConnected);

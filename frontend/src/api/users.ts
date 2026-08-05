@@ -27,7 +27,9 @@ export interface CreateUserRequest {
 }
 
 export interface UpdateUserRequest {
+  email?: string | null;
   phone?: string | null;
+  telegramChatId?: string | null;
   area?: UserArea;
   isActive?: boolean;
 }

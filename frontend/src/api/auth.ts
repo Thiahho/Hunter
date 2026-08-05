@@ -46,6 +46,33 @@ export async function fetchCurrentUser(): Promise<CurrentUser> {
   return response.data.data;
 }
 
+export interface UpdateOwnProfileRequest {
+  firstName?: string;
+  lastName?: string;
+  phone?: string;
+  telegramChatId?: string;
+}
+
+export async function updateOwnProfile(request: UpdateOwnProfileRequest): Promise<CurrentUser> {
+  const response = await apiClient.patch<ApiResponse<CurrentUser>>('/auth/me', request);
+  if (!response.data.success || !response.data.data) {
+    throw new Error(response.data.message ?? 'No se pudo actualizar el perfil.');
+  }
+  return response.data.data;
+}
+
+export interface ChangePasswordRequest {
+  currentPassword: string;
+  newPassword: string;
+}
+
+export async function changePassword(request: ChangePasswordRequest): Promise<void> {
+  const response = await apiClient.post<ApiResponse<boolean>>('/auth/me/change-password', request);
+  if (!response.data.success) {
+    throw new Error(response.data.message ?? 'No se pudo cambiar la contraseña.');
+  }
+}
+
 export interface TelegramLink {
   deepLink: string;
   expiresAt: string;

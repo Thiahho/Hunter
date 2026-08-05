@@ -10,6 +10,7 @@ import {
   type UserDto,
 } from '../../api/users';
 import { PasswordInput } from '../../components/PasswordInput';
+import { useAuthStore } from '../../store/authStore';
 
 const roleOptions: { value: InvitableRole; label: string }[] = [
   { value: 'ADMIN', label: 'Admin' },
@@ -34,6 +35,7 @@ const inputClass =
 
 export function UsersPage() {
   const queryClient = useQueryClient();
+  const isOwner = useAuthStore((state) => state.user?.roles.includes('OWNER') ?? false);
 
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
@@ -85,6 +87,10 @@ export function UsersPage() {
 
   function handleToggleActive(user: UserDto) {
     updateMutation.mutate({ id: user.id, request: { isActive: !user.isActive } });
+  }
+
+  function handleSaveContact(id: number, request: UpdateUserRequest) {
+    updateMutation.mutate({ id, request });
   }
 
   const users = usersQuery.data ?? [];
@@ -186,61 +192,26 @@ export function UsersPage() {
                 <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">Email</th>
                 <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">Rol</th>
                 <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">Área</th>
-                <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">Telegram</th>
+                <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">Teléfono</th>
+                <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">Chat ID de Telegram</th>
                 <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">Activo</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800 bg-white dark:bg-slate-950">
               {users.map((user) => (
-                <tr key={user.id} className={user.isActive ? 'hover:bg-slate-50 dark:hover:bg-slate-900' : 'opacity-50'}>
-                  <td className="px-4 py-2 text-slate-900 dark:text-slate-100">
-                    {user.firstName} {user.lastName}
-                  </td>
-                  <td className="px-4 py-2 text-slate-600 dark:text-slate-300">{user.email}</td>
-                  <td className="px-4 py-2 text-slate-600 dark:text-slate-300">{user.roles.join(', ')}</td>
-                  <td className="px-4 py-2">
-                    <select
-                      value={user.area}
-                      onChange={(e) => handleAreaChange(user, e.target.value as UserArea)}
-                      disabled={updateMutation.isPending}
-                      className="rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2 py-1 text-xs text-slate-900 dark:text-slate-100"
-                    >
-                      {areaOptions.map((option) => (
-                        <option key={option.value} value={option.value}>
-                          {areaLabels[option.value]}
-                        </option>
-                      ))}
-                    </select>
-                  </td>
-                  <td className="px-4 py-2">
-                    {user.telegramChatId ? (
-                      <div>
-                        <span className="text-xs font-medium text-emerald-600 dark:text-emerald-400">Vinculado ✓</span>
-                        <p className="font-mono text-xs text-slate-400" title="Telegram chat_id">
-                          {user.telegramChatId}
-                        </p>
-                      </div>
-                    ) : (
-                      <span className="text-xs text-slate-400">Sin vincular</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-2">
-                    <label className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-300">
-                      <input
-                        type="checkbox"
-                        checked={user.isActive}
-                        onChange={() => handleToggleActive(user)}
-                        disabled={updateMutation.isPending}
-                        className="rounded border-slate-300 dark:border-slate-700"
-                      />
-                      {user.isActive ? 'Activo' : 'Inactivo'}
-                    </label>
-                  </td>
-                </tr>
+                <UserRow
+                  key={user.id}
+                  user={user}
+                  isSaving={updateMutation.isPending}
+                  canEditEmail={isOwner}
+                  onAreaChange={(newArea) => handleAreaChange(user, newArea)}
+                  onToggleActive={() => handleToggleActive(user)}
+                  onSaveContact={(request) => handleSaveContact(user.id, request)}
+                />
               ))}
               {users.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="px-4 py-6 text-center text-slate-400">
+                  <td colSpan={7} className="px-4 py-6 text-center text-slate-400">
                     No hay usuarios todavía.
                   </td>
                 </tr>
@@ -250,5 +221,110 @@ export function UsersPage() {
         </div>
       )}
     </div>
+  );
+}
+
+function UserRow({
+  user,
+  isSaving,
+  canEditEmail,
+  onAreaChange,
+  onToggleActive,
+  onSaveContact,
+}: {
+  user: UserDto;
+  isSaving: boolean;
+  canEditEmail: boolean;
+  onAreaChange: (area: UserArea) => void;
+  onToggleActive: () => void;
+  onSaveContact: (request: UpdateUserRequest) => void;
+}) {
+  const [email, setEmail] = useState(user.email);
+  const [phone, setPhone] = useState(user.phone ?? '');
+  const [telegramChatId, setTelegramChatId] = useState(user.telegramChatId ?? '');
+
+  const dirty = email !== user.email || phone !== (user.phone ?? '') || telegramChatId !== (user.telegramChatId ?? '');
+
+  function handleSave() {
+    onSaveContact({
+      email: canEditEmail && email !== user.email ? email : undefined,
+      phone: phone || null,
+      telegramChatId: telegramChatId || null,
+    });
+  }
+
+  return (
+    <tr className={user.isActive ? 'hover:bg-slate-50 dark:hover:bg-slate-900' : 'opacity-50'}>
+      <td className="px-4 py-2 text-slate-900 dark:text-slate-100">
+        {user.firstName} {user.lastName}
+      </td>
+      <td className="px-4 py-2 text-slate-600 dark:text-slate-300">
+        {canEditEmail ? (
+          <input
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            className="w-40 rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2 py-1 text-xs text-slate-900 dark:text-slate-100"
+          />
+        ) : (
+          user.email
+        )}
+      </td>
+      <td className="px-4 py-2 text-slate-600 dark:text-slate-300">{user.roles.join(', ')}</td>
+      <td className="px-4 py-2">
+        <select
+          value={user.area}
+          onChange={(e) => onAreaChange(e.target.value as UserArea)}
+          disabled={isSaving}
+          className="rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2 py-1 text-xs text-slate-900 dark:text-slate-100"
+        >
+          {areaOptions.map((option) => (
+            <option key={option.value} value={option.value}>
+              {areaLabels[option.value]}
+            </option>
+          ))}
+        </select>
+      </td>
+      <td className="px-4 py-2">
+        <input
+          type="text"
+          value={phone}
+          onChange={(e) => setPhone(e.target.value)}
+          placeholder="Sin teléfono"
+          className="w-32 rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2 py-1 text-xs text-slate-900 dark:text-slate-100"
+        />
+      </td>
+      <td className="px-4 py-2">
+        <input
+          type="text"
+          value={telegramChatId}
+          onChange={(e) => setTelegramChatId(e.target.value)}
+          placeholder="Sin vincular"
+          className="w-32 rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2 py-1 text-xs font-mono text-slate-900 dark:text-slate-100"
+        />
+        {dirty && (
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={isSaving}
+            className="ml-1 rounded-md border border-indigo-300 dark:border-indigo-700 px-2 py-1 text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-500/10 disabled:opacity-60"
+          >
+            Guardar
+          </button>
+        )}
+      </td>
+      <td className="px-4 py-2">
+        <label className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-300">
+          <input
+            type="checkbox"
+            checked={user.isActive}
+            onChange={onToggleActive}
+            disabled={isSaving}
+            className="rounded border-slate-300 dark:border-slate-700"
+          />
+          {user.isActive ? 'Activo' : 'Inactivo'}
+        </label>
+      </td>
+    </tr>
   );
 }

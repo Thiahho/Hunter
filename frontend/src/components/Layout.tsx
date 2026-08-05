@@ -9,6 +9,7 @@ const navItems = [
   { to: '/app/prospects', label: 'Prospectos' },
   { to: '/app/prospects/search', label: 'Buscar prospectos' },
   { to: '/app/leads', label: 'Leads' },
+  { to: '/app/profile', label: 'Mi perfil' },
 ];
 
 const userManagementRoles = ['OWNER', 'ADMIN'];

@@ -2,8 +2,10 @@ using System.Security.Cryptography;
 using Hunter.Application.Auth.Contracts;
 using Hunter.Application.Common;
 using Hunter.Application.Crm;
+using Hunter.Application.Prospecting;
 using Hunter.Domain.Identity;
 using Hunter.Domain.Organizations;
+using Hunter.Domain.Prospecting;
 using Hunter.Shared;
 using Microsoft.EntityFrameworkCore;
 
@@ -120,6 +122,69 @@ public class AuthService(
         return Result<CurrentUserDto>.Success(ToDto(user, roles));
     }
 
+    // Autoservicio, sin Role/Area/IsActive (eso lo administra OWNER/ADMIN vía UserService): el
+    // propio usuario logueado edita sus datos personales y, si no quiere pasar por el flujo
+    // /start del bot, puede pegar su chat_id de Telegram a mano acá también.
+    public async Task<Result<CurrentUserDto>> UpdateOwnProfileAsync(int userId, UpdateOwnProfileRequest request, CancellationToken ct = default)
+    {
+        var user = await db.Users
+            .Include(u => u.UserRoles).ThenInclude(ur => ur.Role)
+            .FirstOrDefaultAsync(u => u.Id == userId, ct);
+
+        if (user is null)
+            return Result<CurrentUserDto>.Failure("Usuario no encontrado.");
+
+        if (request.FirstName is not null)
+        {
+            if (string.IsNullOrWhiteSpace(request.FirstName))
+                return Result<CurrentUserDto>.Failure("El nombre no puede estar vacío.");
+            user.FirstName = request.FirstName.Trim();
+        }
+
+        if (request.LastName is not null)
+        {
+            if (string.IsNullOrWhiteSpace(request.LastName))
+                return Result<CurrentUserDto>.Failure("El apellido no puede estar vacío.");
+            user.LastName = request.LastName.Trim();
+        }
+
+        if (request.Phone is not null)
+        {
+            user.Phone = string.IsNullOrWhiteSpace(request.Phone)
+                ? null
+                : ContactValueNormalizer.Normalize(ProspectContactChannel.Whatsapp, request.Phone);
+        }
+
+        if (request.TelegramChatId is not null)
+            user.TelegramChatId = string.IsNullOrWhiteSpace(request.TelegramChatId) ? null : request.TelegramChatId.Trim();
+
+        await db.SaveChangesAsync(ct);
+
+        var roles = user.UserRoles.Select(ur => ur.Role.Name).ToList();
+        return Result<CurrentUserDto>.Success(ToDto(user, roles));
+    }
+
+    // Exige la contraseña actual (a diferencia de UpdateOwnProfileAsync): a diferencia del resto
+    // del perfil, la contraseña es lo único que por sí sola habilita tomar la cuenta, así que no
+    // alcanza con estar logueado — hay que probar que se la sigue sabiendo.
+    public async Task<Result<bool>> ChangePasswordAsync(int userId, ChangePasswordRequest request, CancellationToken ct = default)
+    {
+        var user = await db.Users.FirstOrDefaultAsync(u => u.Id == userId, ct);
+        if (user is null)
+            return Result<bool>.Failure("Usuario no encontrado.");
+
+        if (!passwordHasher.Verify(user, user.PasswordHash, request.CurrentPassword))
+            return Result<bool>.Failure("La contraseña actual es incorrecta.");
+
+        if (string.IsNullOrWhiteSpace(request.NewPassword) || request.NewPassword.Length < 8)
+            return Result<bool>.Failure("La contraseña nueva debe tener al menos 8 caracteres.");
+
+        user.PasswordHash = passwordHasher.Hash(user, request.NewPassword);
+        await db.SaveChangesAsync(ct);
+
+        return Result<bool>.Success(true);
+    }
+
     // Autoservicio: el propio usuario logueado genera su link, sin necesidad de una pantalla de
     // gestión de usuarios (que hoy no existe). Un código nuevo pisa cualquier link pendiente
     // anterior de ese usuario.
@@ -180,7 +245,8 @@ public class AuthService(
     }
 
     private static CurrentUserDto ToDto(User user, IReadOnlyCollection<string> roles) =>
-        new(user.Id, user.FirstName, user.LastName, user.Email, user.OrganizationId, roles, user.TelegramChatId is not null);
+        new(user.Id, user.FirstName, user.LastName, user.Email, user.Phone, user.TelegramChatId,
+            user.OrganizationId, roles, user.TelegramChatId is not null);
 
     private static string? ValidateRegister(RegisterOrganizationRequest request)
     {

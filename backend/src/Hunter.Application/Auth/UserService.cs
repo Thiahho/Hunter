@@ -8,7 +8,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Hunter.Application.Auth;
 
-public class UserService(IHunterDbContext db, IPasswordHasher passwordHasher) : IUserService
+public class UserService(IHunterDbContext db, IPasswordHasher passwordHasher, ICurrentUserService currentUser) : IUserService
 {
     private static readonly Dictionary<string, int> InvitableRoles = new()
     {
@@ -69,6 +69,23 @@ public class UserService(IHunterDbContext db, IPasswordHasher passwordHasher) : 
 
         if (user is null)
             return Result<UserDto>.Failure("Usuario no encontrado.");
+
+        if (request.Email is not null)
+        {
+            if (!currentUser.Roles.Contains(RoleNames.Owner))
+                return Result<UserDto>.Failure("Solo el Owner puede cambiar el email de un usuario.");
+
+            var email = request.Email.Trim().ToLowerInvariant();
+            if (string.IsNullOrWhiteSpace(email) || !email.Contains('@'))
+                return Result<UserDto>.Failure("El email no es válido.");
+
+            var emailTaken = await db.Users.IgnoreQueryFilters()
+                .AnyAsync(u => u.OrganizationId == organizationId && u.Id != userId && u.Email == email, ct);
+            if (emailTaken)
+                return Result<UserDto>.Failure("Ya existe un usuario con ese email en la organización.");
+
+            user.Email = email;
+        }
 
         if (request.Phone is not null)
         {

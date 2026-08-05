@@ -66,6 +66,28 @@ public class AuthController(IAuthService authService, ICurrentUserService curren
         return Ok(ApiResponse<CurrentUserDto>.Ok(result.Value!));
     }
 
+    [HttpPatch("me")]
+    [Authorize]
+    public async Task<IActionResult> UpdateMe(UpdateOwnProfileRequest request, CancellationToken ct)
+    {
+        var result = await authService.UpdateOwnProfileAsync(currentUserService.UserId!.Value, request, ct);
+        if (!result.Succeeded)
+            return BadRequest(ApiResponse<CurrentUserDto>.Fail(result.Error!));
+
+        return Ok(ApiResponse<CurrentUserDto>.Ok(result.Value!));
+    }
+
+    [HttpPost("me/change-password")]
+    [Authorize]
+    public async Task<IActionResult> ChangePassword(ChangePasswordRequest request, CancellationToken ct)
+    {
+        var result = await authService.ChangePasswordAsync(currentUserService.UserId!.Value, request, ct);
+        if (!result.Succeeded)
+            return BadRequest(ApiResponse<bool>.Fail(result.Error!));
+
+        return Ok(ApiResponse<bool>.Ok(true));
+    }
+
     [HttpPost("me/telegram-link")]
     [Authorize]
     public async Task<IActionResult> GenerateTelegramLink(CancellationToken ct)
