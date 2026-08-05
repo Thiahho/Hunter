@@ -23,11 +23,56 @@ import {
 // (OpenStreetMapCategories.Supported en el backend). Sin label compartido a propósito: sigue
 // el mismo patrón que categoryLabels/statusLabels en ProspectsListPage (duplicado por página).
 const categoryOptions: { value: ProspectCategory; label: string }[] = [
-  { value: 'AutoPartsStore', label: 'Repuestería' },
+  { value: 'AutoPartsStore', label: 'Casa de repuestos' },
   { value: 'Workshop', label: 'Taller' },
   { value: 'Lubricentro', label: 'Lubricentro' },
   { value: 'TireShop', label: 'Gomería' },
   { value: 'Reseller', label: 'Concesionaria / reventa' },
+];
+
+// Búsqueda libre de rubro (texto arbitrario, resuelto por sinónimo o mandado tal cual como
+// keyword): deshabilitada a pedido — el objetivo pasa a ser específicamente "Casa de repuestos" y
+// "Mayorista (Suspensión/Tren delantero)", no cualquier rubro. El input libre, los sinónimos y el
+// datalist quedan en el código (más abajo, detrás de este flag) por si se reactiva más adelante.
+const FREE_TEXT_RUBRO_ENABLED = false;
+
+// Sin tag propio en OSM ni en ProspectCategory: se busca como término libre (name~regex en OSM,
+// texto plano en Apify) en vez de una categoría — mismo mecanismo que ya usa la búsqueda libre,
+// solo que ahora se ofrece como una opción fija en vez de un input de texto abierto.
+const WHOLESALE_SUSPENSION_KEYWORD = 'mayorista suspensión tren delantero';
+
+// Localidades reales alcanzan a OSM/Apify igual que una provincia entera (Apify busca "{rubro} en
+// {zona}, Argentina" sin distinguir si "zona" es una ciudad o una provincia completa), así que
+// elegir una provincia acá solo agrega su nombre a la misma lista de "localities" — sin cambios de
+// contrato ni de backend. Solo se ofrece con Apify: en modo administrativo de OSM, un área del
+// tamaño de una provincia entera pisa el timeout de Overpass (ver DefaultKeywordRadiusKm en
+// ImportService, mismo problema que ya resolvimos para partidos grandes, pero una provincia es
+// varios órdenes de magnitud más grande).
+const ARGENTINE_PROVINCES = [
+  'Buenos Aires',
+  'Catamarca',
+  'Chaco',
+  'Chubut',
+  'Ciudad Autónoma de Buenos Aires',
+  'Córdoba',
+  'Corrientes',
+  'Entre Ríos',
+  'Formosa',
+  'Jujuy',
+  'La Pampa',
+  'La Rioja',
+  'Mendoza',
+  'Misiones',
+  'Neuquén',
+  'Río Negro',
+  'Salta',
+  'San Juan',
+  'San Luis',
+  'Santa Cruz',
+  'Santa Fe',
+  'Santiago del Estero',
+  'Tierra del Fuego',
+  'Tucumán',
 ];
 
 // Sinónimos en español para cada categoría: el dominio (ProspectCategory) es un enum cerrado
@@ -101,6 +146,7 @@ export function ProspectSearchPage() {
   const [keywords, setKeywords] = useState<string[]>([]);
   const [categoryInput, setCategoryInput] = useState('');
   const [localityInput, setLocalityInput] = useState('');
+  const [provinceInput, setProvinceInput] = useState('');
   const [localities, setLocalities] = useState<string[]>([]);
   const [radiusKm, setRadiusKm] = useState(10);
   const [maxResults, setMaxResults] = useState(50);
@@ -207,7 +253,7 @@ export function ProspectSearchPage() {
 
   function handleSchedule(event: FormEvent) {
     event.preventDefault();
-    if (localities.length === 0 || !scheduleCampaignId || !scheduleAt) return;
+    if (localities.length === 0 || !hasRubroSelected || !scheduleCampaignId || !scheduleAt) return;
 
     scheduleMutation.mutate({
       localities,
@@ -257,12 +303,33 @@ export function ProspectSearchPage() {
     setKeywords((prev) => prev.filter((k) => k !== keyword));
   }
 
+  function toggleAutoPartsStore() {
+    setSelectedCategories((prev) =>
+      prev.includes('AutoPartsStore') ? prev.filter((c) => c !== 'AutoPartsStore') : [...prev, 'AutoPartsStore'],
+    );
+  }
+
+  function toggleWholesaleSuspension() {
+    setKeywords((prev) =>
+      prev.includes(WHOLESALE_SUSPENSION_KEYWORD)
+        ? prev.filter((k) => k !== WHOLESALE_SUSPENSION_KEYWORD)
+        : [...prev, WHOLESALE_SUSPENSION_KEYWORD],
+    );
+  }
+
   function addLocality() {
     const trimmed = localityInput.trim();
     if (trimmed && !localities.includes(trimmed) && localities.length < MAX_LOCALITIES) {
       setLocalities((prev) => [...prev, trimmed]);
     }
     setLocalityInput('');
+  }
+
+  function addProvince() {
+    if (provinceInput && !localities.includes(provinceInput) && localities.length < MAX_LOCALITIES) {
+      setLocalities((prev) => [...prev, provinceInput]);
+    }
+    setProvinceInput('');
   }
 
   function handleLocalityKeyDown(event: KeyboardEvent<HTMLInputElement>) {
@@ -300,9 +367,14 @@ export function ProspectSearchPage() {
     ...keywords,
   ];
 
+  // Con las opciones de rubro fijas (Casa de repuestos / Mayorista suspensión-tren delantero) ya
+  // no tiene sentido el default "sin selección = todos los rubros" que tenía OSM: acá se exige
+  // elegir al menos una de las dos, en las dos fuentes, para que la búsqueda nunca quede abierta.
+  const hasRubroSelected = selectedCategories.length > 0 || keywords.length > 0;
+
   function handleSubmit(event: FormEvent) {
     event.preventDefault();
-    if (localities.length === 0) return;
+    if (localities.length === 0 || !hasRubroSelected) return;
 
     if (source === 'osm') {
       searchMutation.mutate({
@@ -313,7 +385,6 @@ export function ProspectSearchPage() {
         maxResults,
       });
     } else {
-      if (apifyRubroTerms.length === 0) return;
       apifyMutation.mutate({ localities, keywords: apifyRubroTerms, maxResults });
     }
   }
@@ -377,36 +448,62 @@ export function ProspectSearchPage() {
           </div>
           <p className="mt-1 text-xs text-slate-400">
             {source === 'osm'
-              ? 'Gratis. Cubre bien los 5 rubros automotrices; un rubro libre puede no encontrar el negocio si no tiene nombre/teléfono cargado en OpenStreetMap.'
-              : 'Servicio pago (Apify, ~USD 1.50 cada 1000 resultados). Busca cualquier rubro directo en Google Maps, igual que buscarlo a mano.'}
+              ? 'Gratis. "Casa de repuestos" busca por tag exacto de OpenStreetMap; "Mayorista" busca por coincidencia de nombre, así que puede no encontrar el negocio si no está bien cargado en OSM.'
+              : 'Servicio pago (Apify, ~USD 1.50 cada 1000 resultados). Busca directo en Google Maps, igual que buscarlo a mano — más cobertura para el rubro de mayoristas.'}
           </p>
         </div>
 
         <div>
           <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Rubro</label>
-          <div className="mt-1 flex gap-2">
-            <input
-              type="text"
-              value={categoryInput}
-              onChange={(e) => setCategoryInput(e.target.value)}
-              onKeyDown={handleCategoryKeyDown}
-              list="category-suggestions"
-              placeholder="ej. gomería, taller, lubricentro, o cualquier otro rubro"
-              className={inputClass}
-            />
-            <datalist id="category-suggestions">
-              {categoryOptions.map((option) => (
-                <option key={option.value} value={option.label} />
-              ))}
-            </datalist>
+          <div className="mt-1 flex flex-wrap gap-2">
             <button
               type="button"
-              onClick={addCategory}
-              className="mt-1 shrink-0 rounded-md border border-slate-300 dark:border-slate-700 px-3 py-2 text-sm font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+              onClick={toggleAutoPartsStore}
+              className={`rounded-md border px-3 py-2 text-sm font-medium ${
+                selectedCategories.includes('AutoPartsStore')
+                  ? 'border-indigo-600 bg-indigo-50 text-indigo-700 dark:border-indigo-500 dark:bg-indigo-500/10 dark:text-indigo-300'
+                  : 'border-slate-300 text-slate-600 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800'
+              }`}
             >
-              Agregar
+              Casa de repuestos
+            </button>
+            <button
+              type="button"
+              onClick={toggleWholesaleSuspension}
+              className={`rounded-md border px-3 py-2 text-sm font-medium ${
+                keywords.includes(WHOLESALE_SUSPENSION_KEYWORD)
+                  ? 'border-indigo-600 bg-indigo-50 text-indigo-700 dark:border-indigo-500 dark:bg-indigo-500/10 dark:text-indigo-300'
+                  : 'border-slate-300 text-slate-600 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800'
+              }`}
+            >
+              Mayorista (Suspensión / Tren delantero)
             </button>
           </div>
+          {FREE_TEXT_RUBRO_ENABLED && (
+            <div className="mt-2 flex gap-2">
+              <input
+                type="text"
+                value={categoryInput}
+                onChange={(e) => setCategoryInput(e.target.value)}
+                onKeyDown={handleCategoryKeyDown}
+                list="category-suggestions"
+                placeholder="ej. gomería, taller, lubricentro, o cualquier otro rubro"
+                className={inputClass}
+              />
+              <datalist id="category-suggestions">
+                {categoryOptions.map((option) => (
+                  <option key={option.value} value={option.label} />
+                ))}
+              </datalist>
+              <button
+                type="button"
+                onClick={addCategory}
+                className="mt-1 shrink-0 rounded-md border border-slate-300 dark:border-slate-700 px-3 py-2 text-sm font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+              >
+                Agregar
+              </button>
+            </div>
+          )}
           {(selectedCategories.length > 0 || keywords.length > 0) && (
             <div className="mt-2 flex flex-wrap gap-2">
               {selectedCategories.map((category) => (
@@ -444,11 +541,7 @@ export function ProspectSearchPage() {
               ))}
             </div>
           )}
-          <p className="mt-1 text-xs text-slate-400">
-            {source === 'osm'
-              ? 'Sin selección = se buscan todos los rubros. Un rubro fuera de la lista (ej. "peluquería") se agrega como término libre y se busca por nombre de negocio.'
-              : 'Con Google Maps (Apify) hace falta al menos un rubro: se busca tal cual, sin restricción a los 5 automotrices.'}
-          </p>
+          <p className="mt-1 text-xs text-slate-400">Elegí al menos uno de los dos rubros para poder buscar.</p>
         </div>
 
         <div>
@@ -474,6 +567,31 @@ export function ProspectSearchPage() {
               Agregar
             </button>
           </div>
+          {source === 'apify' && (
+            <div className="mt-2 flex gap-2">
+              <select
+                value={provinceInput}
+                onChange={(e) => setProvinceInput(e.target.value)}
+                disabled={localities.length >= MAX_LOCALITIES}
+                className={inputClass}
+              >
+                <option value="">O elegí una provincia entera…</option>
+                {ARGENTINE_PROVINCES.map((province) => (
+                  <option key={province} value={province}>
+                    {province}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={addProvince}
+                disabled={!provinceInput || localities.length >= MAX_LOCALITIES}
+                className="mt-1 shrink-0 rounded-md border border-slate-300 dark:border-slate-700 px-3 py-2 text-sm font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-40"
+              >
+                Agregar
+              </button>
+            </div>
+          )}
           {localities.length > 0 && (
             <div className="mt-2 flex flex-wrap gap-2">
               {localities.map((locality) => (
@@ -537,9 +655,7 @@ export function ProspectSearchPage() {
         <div className="flex flex-wrap items-center gap-3">
           <button
             type="submit"
-            disabled={
-              activeMutation.isPending || localities.length === 0 || (source === 'apify' && apifyRubroTerms.length === 0)
-            }
+            disabled={activeMutation.isPending || localities.length === 0 || !hasRubroSelected}
             className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-60"
           >
             {activeMutation.isPending ? `Buscando… (${elapsedSeconds}s)` : 'Buscar'}
@@ -599,7 +715,11 @@ export function ProspectSearchPage() {
           <button
             type="submit"
             disabled={
-              scheduleMutation.isPending || localities.length === 0 || !scheduleCampaignId || !scheduleAt
+              scheduleMutation.isPending ||
+              localities.length === 0 ||
+              !hasRubroSelected ||
+              !scheduleCampaignId ||
+              !scheduleAt
             }
             className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-60"
           >
