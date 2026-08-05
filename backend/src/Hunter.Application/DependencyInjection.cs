@@ -20,6 +20,7 @@ public static class DependencyInjection
         services.AddScoped<IProspectService, ProspectService>();
         services.AddScoped<ITagService, TagService>();
         services.AddScoped<IImportService, ImportService>();
+        services.AddScoped<IScheduledProspectAutomationService, ScheduledProspectAutomationService>();
         services.AddScoped<ISuppressionService, SuppressionService>();
         services.AddScoped<IMessageTemplateService, MessageTemplateService>();
         services.AddScoped<ICampaignService, CampaignService>();

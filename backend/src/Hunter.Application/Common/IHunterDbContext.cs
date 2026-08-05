@@ -26,6 +26,7 @@ public interface IHunterDbContext
     DbSet<ProspectTag> ProspectTags { get; }
     DbSet<ImportBatch> ImportBatches { get; }
     DbSet<ImportBatchRecord> ImportBatchRecords { get; }
+    DbSet<ScheduledProspectAutomation> ScheduledProspectAutomations { get; }
 
     DbSet<MessageTemplate> MessageTemplates { get; }
     DbSet<Campaign> Campaigns { get; }

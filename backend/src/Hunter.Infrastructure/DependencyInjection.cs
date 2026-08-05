@@ -73,6 +73,9 @@ public static class DependencyInjection
         services.Configure<CampaignQueueOptions>(configuration.GetSection(CampaignQueueOptions.SectionName));
         services.AddHostedService<CampaignQueueBackgroundService>();
 
+        services.Configure<ScheduledProspectAutomationOptions>(configuration.GetSection(ScheduledProspectAutomationOptions.SectionName));
+        services.AddHostedService<ScheduledProspectAutomationBackgroundService>();
+
         services.Configure<GooglePlacesOptions>(configuration.GetSection(GooglePlacesOptions.SectionName));
         services.AddHttpClient<IGooglePlacesClient, GooglePlacesClient>(client =>
         {

@@ -35,6 +35,7 @@ public class HunterDbContext : DbContext, IHunterDbContext
     public DbSet<ProspectTag> ProspectTags => Set<ProspectTag>();
     public DbSet<ImportBatch> ImportBatches => Set<ImportBatch>();
     public DbSet<ImportBatchRecord> ImportBatchRecords => Set<ImportBatchRecord>();
+    public DbSet<ScheduledProspectAutomation> ScheduledProspectAutomations => Set<ScheduledProspectAutomation>();
 
     public DbSet<MessageTemplate> MessageTemplates => Set<MessageTemplate>();
     public DbSet<Campaign> Campaigns => Set<Campaign>();
@@ -83,6 +84,9 @@ public class HunterDbContext : DbContext, IHunterDbContext
 
         modelBuilder.Entity<ImportBatch>()
             .HasQueryFilter(b => b.OrganizationId == CurrentOrganizationId);
+
+        modelBuilder.Entity<ScheduledProspectAutomation>()
+            .HasQueryFilter(a => a.OrganizationId == CurrentOrganizationId);
 
         modelBuilder.Entity<MessageTemplate>()
             .HasQueryFilter(t => t.OrganizationId == CurrentOrganizationId);

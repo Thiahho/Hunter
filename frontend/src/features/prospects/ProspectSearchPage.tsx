@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent, type KeyboardEvent } from 'react';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router';
 import type { ProspectCategory } from '../../api/prospects';
 import {
@@ -10,6 +10,13 @@ import {
   type ImportConfirmResultDto,
   type ImportPreviewDto,
 } from '../../api/imports';
+import { searchCampaigns } from '../../api/campaigns';
+import {
+  cancelProspectAutomation,
+  createProspectAutomation,
+  listProspectAutomations,
+  type ScheduledAutomationStatus,
+} from '../../api/prospectAutomations';
 
 // Único subconjunto de ProspectCategory con equivalente buscable en OpenStreetMap
 // (OpenStreetMapCategories.Supported en el backend). Sin label compartido a propósito: sigue
@@ -65,6 +72,22 @@ function resolveCategoryFromText(text: string): ProspectCategory | null {
 
 const MAX_LOCALITIES = 5;
 const RADIUS_OPTIONS_KM = [5, 10, 20, 50];
+
+const automationStatusLabels: Record<ScheduledAutomationStatus, string> = {
+  Pending: 'Programada',
+  Running: 'Ejecutando',
+  Completed: 'Completada',
+  Failed: 'Falló',
+  Cancelled: 'Cancelada',
+};
+
+const automationStatusClass: Record<ScheduledAutomationStatus, string> = {
+  Pending: 'bg-indigo-50 dark:bg-indigo-500/10 text-indigo-700 dark:text-indigo-300',
+  Running: 'bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-300',
+  Completed: 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
+  Failed: 'bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-300',
+  Cancelled: 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400',
+};
 
 const inputClass =
   'mt-1 w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-slate-900 dark:text-slate-100';
@@ -130,6 +153,53 @@ export function ProspectSearchPage() {
     mutationFn: () => cancelImport(batchId!),
     onSuccess: () => resetSearch(),
   });
+
+  const queryClient = useQueryClient();
+  const [scheduleCampaignId, setScheduleCampaignId] = useState('');
+  const [scheduleAt, setScheduleAt] = useState('');
+
+  const campaignsQuery = useQuery({
+    queryKey: ['campaigns', 'schedulable'],
+    queryFn: () => searchCampaigns({ pageSize: 100 }),
+  });
+  // Solo campañas en un estado editable pueden recibir nuevos destinatarios y arrancar
+  // (ver validación equivalente en ScheduledProspectAutomationService.CreateAsync).
+  const schedulableCampaigns = (campaignsQuery.data?.items ?? []).filter((c) =>
+    ['Draft', 'Ready', 'Paused'].includes(c.status),
+  );
+
+  const automationsQuery = useQuery({
+    queryKey: ['prospect-automations'],
+    queryFn: listProspectAutomations,
+  });
+
+  const scheduleMutation = useMutation({
+    mutationFn: createProspectAutomation,
+    onSuccess: () => {
+      setScheduleAt('');
+      setScheduleCampaignId('');
+      queryClient.invalidateQueries({ queryKey: ['prospect-automations'] });
+    },
+  });
+
+  const cancelAutomationMutation = useMutation({
+    mutationFn: cancelProspectAutomation,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['prospect-automations'] }),
+  });
+
+  function handleSchedule(event: FormEvent) {
+    event.preventDefault();
+    if (localities.length === 0 || !scheduleCampaignId || !scheduleAt) return;
+
+    scheduleMutation.mutate({
+      localities,
+      categories: selectedCategories.length > 0 ? selectedCategories : undefined,
+      radiusKm,
+      maxResults,
+      campaignId: Number(scheduleCampaignId),
+      scheduledAt: new Date(scheduleAt).toISOString(),
+    });
+  }
 
   function resetSearch() {
     setBatchId(null);
@@ -377,6 +447,115 @@ export function ProspectSearchPage() {
           )}
         </div>
       </form>
+
+      <div className="space-y-4 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5">
+        <div>
+          <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Programar automatización</h3>
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            Elegí una fecha/hora: en ese momento el sistema busca los prospectos con el rubro y zonas de arriba, los
+            guarda automáticamente y envía la campaña seleccionada sin revisión manual.
+          </p>
+        </div>
+
+        <form onSubmit={handleSchedule} className="flex flex-wrap items-end gap-4">
+          <div>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Campaña</label>
+            <select
+              value={scheduleCampaignId}
+              onChange={(e) => setScheduleCampaignId(e.target.value)}
+              className={`${inputClass} w-56`}
+            >
+              <option value="">Seleccionar…</option>
+              {schedulableCampaigns.map((campaign) => (
+                <option key={campaign.id} value={campaign.id}>
+                  {campaign.name}
+                </option>
+              ))}
+            </select>
+            {campaignsQuery.data && schedulableCampaigns.length === 0 && (
+              <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
+                No hay campañas disponibles para programar (deben estar en Borrador, Lista o Pausada).
+              </p>
+            )}
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Fecha y hora</label>
+            <input
+              type="datetime-local"
+              value={scheduleAt}
+              onChange={(e) => setScheduleAt(e.target.value)}
+              className={`${inputClass} w-56`}
+            />
+          </div>
+
+          <button
+            type="submit"
+            disabled={
+              scheduleMutation.isPending || localities.length === 0 || !scheduleCampaignId || !scheduleAt
+            }
+            className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-60"
+          >
+            {scheduleMutation.isPending ? 'Programando…' : 'Programar'}
+          </button>
+        </form>
+
+        {scheduleMutation.isError && (
+          <p className="text-sm text-red-600 dark:text-red-400">
+            {scheduleMutation.error instanceof Error ? scheduleMutation.error.message : 'No se pudo programar la automatización.'}
+          </p>
+        )}
+
+        {automationsQuery.data && automationsQuery.data.length > 0 && (
+          <div className="overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-800">
+            <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-800 text-sm">
+              <thead className="bg-slate-50 dark:bg-slate-900">
+                <tr>
+                  <th className="px-3 py-2 text-left font-medium text-slate-500 dark:text-slate-400">Zonas</th>
+                  <th className="px-3 py-2 text-left font-medium text-slate-500 dark:text-slate-400">Campaña</th>
+                  <th className="px-3 py-2 text-left font-medium text-slate-500 dark:text-slate-400">Programada</th>
+                  <th className="px-3 py-2 text-left font-medium text-slate-500 dark:text-slate-400">Estado</th>
+                  <th className="px-3 py-2 text-left font-medium text-slate-500 dark:text-slate-400">Resultado</th>
+                  <th className="px-3 py-2 text-left font-medium text-slate-500 dark:text-slate-400"></th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800 bg-white dark:bg-slate-950">
+                {automationsQuery.data.map((automation) => (
+                  <tr key={automation.id}>
+                    <td className="px-3 py-2 text-slate-600 dark:text-slate-300">{automation.localities.join(', ')}</td>
+                    <td className="px-3 py-2 text-slate-600 dark:text-slate-300">{automation.campaignName}</td>
+                    <td className="px-3 py-2 text-slate-600 dark:text-slate-300">
+                      {new Date(automation.scheduledAt).toLocaleString()}
+                    </td>
+                    <td className="px-3 py-2">
+                      <span
+                        className={`rounded-full px-2 py-0.5 text-xs font-medium ${automationStatusClass[automation.status]}`}
+                      >
+                        {automationStatusLabels[automation.status]}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2 text-xs text-slate-500 dark:text-slate-400">
+                      {automation.resultSummary ?? '—'}
+                    </td>
+                    <td className="px-3 py-2">
+                      {automation.status === 'Pending' && (
+                        <button
+                          type="button"
+                          onClick={() => cancelAutomationMutation.mutate(automation.id)}
+                          disabled={cancelAutomationMutation.isPending}
+                          className="text-xs font-medium text-red-600 dark:text-red-400 hover:underline disabled:opacity-60"
+                        >
+                          Cancelar
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
 
       {recordsQuery.isLoading && <p className="text-sm text-slate-500 dark:text-slate-400">Cargando resultados...</p>}
 
