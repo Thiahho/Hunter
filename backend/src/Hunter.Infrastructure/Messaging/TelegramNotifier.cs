@@ -22,10 +22,13 @@ public class TelegramNotifier(
     {
         try
         {
-            using var response = await httpClient.PostAsJsonAsync(
-                $"bot{options.Value.BotToken}/sendMessage",
-                new { chat_id = chatId, text = message },
-                ct);
+            // Un BotToken real tiene la forma "<id>:<secreto>" (con ":"). Pasado como string
+            // suelto, HttpClient lo resuelve con `new Uri(str, UriKind.RelativeOrAbsolute)`, que
+            // interpreta todo antes del primer ":" como esquema de URI ("bot12345" no es un
+            // esquema soportado) y tira NotSupportedException — para CUALQUIER token real, no
+            // un caso raro. Forzar UriKind.Relative evita que intente parsear un esquema.
+            var requestUri = new Uri($"bot{options.Value.BotToken}/sendMessage", UriKind.Relative);
+            using var response = await httpClient.PostAsJsonAsync(requestUri, new { chat_id = chatId, text = message }, ct);
 
             var body = await response.Content.ReadAsStringAsync(ct);
 
@@ -38,9 +41,13 @@ public class TelegramNotifier(
 
             return new TelegramSendResult(true, null);
         }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        catch (Exception ex)
         {
-            logger.LogWarning(ex, "[Telegram] Error de red enviando a chat_id {ChatId}", chatId);
+            // Se ensancha más allá de HttpRequestException/TaskCanceledException a propósito:
+            // este método es un notificador de mejor esfuerzo (ver doc en InboundMessageService),
+            // nunca debería poder tirar y romper a un caller que no siempre tiene su propio
+            // try/catch (ver WebhooksController.TelegramInbound).
+            logger.LogWarning(ex, "[Telegram] Error inesperado enviando a chat_id {ChatId}", chatId);
             return new TelegramSendResult(false, ex.Message);
         }
     }

@@ -30,7 +30,7 @@ public class TelegramNotifierTests
     {
         var handler = new FakeHttpMessageHandler(statusCode, responseBody);
         var httpClient = new HttpClient(handler) { BaseAddress = new Uri("https://api.telegram.org/") };
-        var options = Options.Create(new TelegramOptions { BotToken = "test-token" });
+        var options = Options.Create(new TelegramOptions { BotToken = "123456789:test-token" });
         return (new TelegramNotifier(httpClient, options, NullLogger<TelegramNotifier>.Instance), handler);
     }
 
@@ -44,7 +44,10 @@ public class TelegramNotifierTests
         Assert.True(result.Success);
         Assert.Null(result.Error);
 
-        Assert.Equal("https://api.telegram.org/bottest-token/sendMessage", handler.LastRequest!.RequestUri!.ToString());
+        // Aserción clave de esta regresión: un BotToken real con ":" (ver comentario en
+        // TelegramNotifier.SendAsync) rompía la resolución de la URL relativa si no se
+        // construye con UriKind.Relative explícito.
+        Assert.Equal("https://api.telegram.org/bot123456789:test-token/sendMessage", handler.LastRequest!.RequestUri!.ToString());
 
         using var doc = JsonDocument.Parse(handler.LastRequestBody!);
         Assert.Equal("555111222", doc.RootElement.GetProperty("chat_id").GetString());
@@ -83,7 +86,7 @@ public class TelegramNotifierTests
     public async Task SendAsync_NetworkError_ReturnsFailureWithoutThrowing()
     {
         var httpClient = new HttpClient(new ThrowingHttpMessageHandler()) { BaseAddress = new Uri("https://api.telegram.org/") };
-        var notifier = new TelegramNotifier(httpClient, Options.Create(new TelegramOptions { BotToken = "test-token" }), NullLogger<TelegramNotifier>.Instance);
+        var notifier = new TelegramNotifier(httpClient, Options.Create(new TelegramOptions { BotToken = "123456789:test-token" }), NullLogger<TelegramNotifier>.Instance);
 
         var result = await notifier.SendAsync("555111222", "hola");
 
