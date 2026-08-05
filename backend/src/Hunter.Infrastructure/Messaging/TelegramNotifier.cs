@@ -22,12 +22,15 @@ public class TelegramNotifier(
     {
         try
         {
-            // Un BotToken real tiene la forma "<id>:<secreto>" (con ":"). Pasado como string
-            // suelto, HttpClient lo resuelve con `new Uri(str, UriKind.RelativeOrAbsolute)`, que
-            // interpreta todo antes del primer ":" como esquema de URI ("bot12345" no es un
-            // esquema soportado) y tira NotSupportedException — para CUALQUIER token real, no
-            // un caso raro. Forzar UriKind.Relative evita que intente parsear un esquema.
-            var requestUri = new Uri($"bot{options.Value.BotToken}/sendMessage", UriKind.Relative);
+            // Un BotToken real tiene la forma "<id>:<secreto>" (con ":"). Combinar ese path como
+            // relativo contra HttpClient.BaseAddress es frágil con cualquier estrategia de Uri:
+            // pasado como string suelto, "bot12345:..." se lee como si "bot12345" fuera el
+            // esquema (NotSupportedException); forzando UriKind.Relative, Uri sigue detectando
+            // que "parece" absoluto y tira UriFormatException en el sentido contrario. La única
+            // forma robusta es armar el string absoluto completo a mano: con el "https://" ya
+            // puesto al principio, el primer "://" es inequívocamente el separador de esquema y
+            // los ":" del token quedan adentro del path, donde son un carácter válido más.
+            var requestUri = $"{httpClient.BaseAddress}bot{options.Value.BotToken}/sendMessage";
             using var response = await httpClient.PostAsJsonAsync(requestUri, new { chat_id = chatId, text = message }, ct);
 
             var body = await response.Content.ReadAsStringAsync(ct);
