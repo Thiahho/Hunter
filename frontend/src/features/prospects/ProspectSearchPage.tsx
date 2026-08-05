@@ -35,6 +35,16 @@ const categorySynonyms: { value: ProspectCategory; terms: string[] }[] = [
 
 const categoryLabelByValue = new Map(categoryOptions.map((o) => [o.value, o.label]));
 
+// "Unknown" es el único valor fuera de categoryOptions que OpenStreetMapClient.MapCategory
+// puede devolver realmente (Distributor/Other no tienen tag de OSM, ver OpenStreetMapCategories
+// .Supported en el backend), así que alcanza con este único fallback extra para la tabla de
+// preview de la búsqueda.
+function categoryPreviewLabel(category: string | null): string {
+  if (!category) return '—';
+  if (category === 'Unknown') return 'Sin clasificar';
+  return categoryLabelByValue.get(category as ProspectCategory) ?? category;
+}
+
 function resolveCategoryFromText(text: string): ProspectCategory | null {
   const normalized = text
     .trim()
@@ -405,7 +415,7 @@ export function ProspectSearchPage() {
                         </span>
                       )}
                     </td>
-                    <td className="px-3 py-2 text-slate-600 dark:text-slate-300">{record.category ?? '—'}</td>
+                    <td className="px-3 py-2 text-slate-600 dark:text-slate-300">{categoryPreviewLabel(record.category)}</td>
                     <td className="px-3 py-2 text-slate-600 dark:text-slate-300">{record.phone ?? '—'}</td>
                     <td className="px-3 py-2 text-slate-600 dark:text-slate-300">{record.whatsapp ?? '—'}</td>
                     <td className="px-3 py-2 text-slate-600 dark:text-slate-300">{record.address ?? '—'}</td>

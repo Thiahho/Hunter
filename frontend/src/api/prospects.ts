@@ -42,8 +42,11 @@ export interface ProspectListItem {
   id: number;
   businessName: string;
   category: ProspectCategory;
+  address: string | null;
   city: string | null;
   province: string | null;
+  latitude: number | null;
+  longitude: number | null;
   status: ProspectStatus;
   commercialScore: number | null;
   operationalPriority: OperationalPriority | null;
@@ -166,6 +169,13 @@ export async function updateProspect(id: number, request: UpdateProspectRequest)
     throw new Error(response.data.message ?? 'No se pudo actualizar el prospecto.');
   }
   return response.data.data;
+}
+
+export async function deleteProspect(id: number): Promise<void> {
+  const response = await apiClient.delete<ApiResponse<boolean>>(`/prospects/${id}`);
+  if (!response.data.success) {
+    throw new Error(response.data.message ?? 'No se pudo borrar el prospecto.');
+  }
 }
 
 export interface AddProspectContactRequest {

@@ -1,7 +1,18 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router';
-import { searchProspects, type ProspectCategory, type ProspectStatus } from '../../api/prospects';
+import { deleteProspect, searchProspects, type ProspectCategory, type ProspectListItem, type ProspectStatus } from '../../api/prospects';
+
+function buildMapsLink(prospect: ProspectListItem): string | null {
+  if (prospect.latitude !== null && prospect.longitude !== null) {
+    return `https://www.google.com/maps/search/?api=1&query=${prospect.latitude},${prospect.longitude}`;
+  }
+
+  const parts = [prospect.address, prospect.city, prospect.province].filter(Boolean);
+  if (parts.length === 0) return null;
+
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${prospect.businessName}, ${parts.join(', ')}`)}`;
+}
 
 const categories: ProspectCategory[] = [
   'Unknown',
@@ -13,6 +24,17 @@ const categories: ProspectCategory[] = [
   'Reseller',
   'Other',
 ];
+
+const categoryLabels: Record<ProspectCategory, string> = {
+  Unknown: 'Sin clasificar',
+  Distributor: 'Mayorista/Distribuidor',
+  AutoPartsStore: 'Casa de repuestos',
+  Workshop: 'Taller',
+  Lubricentro: 'Lubricentro',
+  TireShop: 'Gomería',
+  Reseller: 'Revendedor',
+  Other: 'Otro',
+};
 
 const statuses: ProspectStatus[] = [
   'New',
@@ -45,6 +67,7 @@ const statusLabels: Record<ProspectStatus, string> = {
 const PAGE_SIZE = 20;
 
 export function ProspectsListPage() {
+  const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState<ProspectCategory | ''>('');
   const [status, setStatus] = useState<ProspectStatus | ''>('');
@@ -62,6 +85,17 @@ export function ProspectsListPage() {
       }),
     placeholderData: (previous) => previous,
   });
+
+  const deleteMutation = useMutation({
+    mutationFn: deleteProspect,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['prospects'] }),
+  });
+
+  function handleDelete(prospect: ProspectListItem) {
+    if (window.confirm(`¿Borrar "${prospect.businessName}"? Esta acción no se puede deshacer.`)) {
+      deleteMutation.mutate(prospect.id);
+    }
+  }
 
   return (
     <div className="space-y-4">
@@ -97,7 +131,7 @@ export function ProspectsListPage() {
           <option value="">Todas las categorías</option>
           {categories.map((c) => (
             <option key={c} value={c}>
-              {c}
+              {categoryLabels[c]}
             </option>
           ))}
         </select>
@@ -137,10 +171,14 @@ export function ProspectsListPage() {
                   <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">Ciudad</th>
                   <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">Estado</th>
                   <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">Contacto</th>
+                  <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">Mapa</th>
+                  <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">Acciones</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800 bg-white dark:bg-slate-950">
-                {data.items.map((p) => (
+                {data.items.map((p) => {
+                  const mapsLink = buildMapsLink(p);
+                  return (
                   <tr key={p.id} className="hover:bg-slate-50 dark:hover:bg-slate-900">
                     <td className="px-4 py-2">
                       <Link
@@ -150,15 +188,48 @@ export function ProspectsListPage() {
                         {p.businessName}
                       </Link>
                     </td>
-                    <td className="px-4 py-2 text-slate-600 dark:text-slate-300">{p.category}</td>
+                    <td className="px-4 py-2 text-slate-600 dark:text-slate-300">{categoryLabels[p.category]}</td>
                     <td className="px-4 py-2 text-slate-600 dark:text-slate-300">{p.city ?? '—'}</td>
                     <td className="px-4 py-2 text-slate-600 dark:text-slate-300">{statusLabels[p.status]}</td>
                     <td className="px-4 py-2 text-slate-600 dark:text-slate-300">{p.primaryContactValue ?? '—'}</td>
+                    <td className="px-4 py-2">
+                      {mapsLink ? (
+                        <a
+                          href={mapsLink}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-indigo-600 dark:text-indigo-400 hover:underline"
+                        >
+                          📍 Ver mapa
+                        </a>
+                      ) : (
+                        <span className="text-slate-400">—</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-2">
+                      <div className="flex gap-2">
+                        <Link
+                          to={`/app/prospects/${p.id}`}
+                          className="text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:underline"
+                        >
+                          Editar
+                        </Link>
+                        <button
+                          type="button"
+                          onClick={() => handleDelete(p)}
+                          disabled={deleteMutation.isPending}
+                          className="text-xs font-medium text-red-600 dark:text-red-400 hover:underline disabled:opacity-60"
+                        >
+                          Borrar
+                        </button>
+                      </div>
+                    </td>
                   </tr>
-                ))}
+                  );
+                })}
                 {data.items.length === 0 && (
                   <tr>
-                    <td colSpan={5} className="px-4 py-6 text-center text-slate-400">
+                    <td colSpan={7} className="px-4 py-6 text-center text-slate-400">
                       No se encontraron prospectos.
                     </td>
                   </tr>

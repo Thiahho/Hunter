@@ -125,9 +125,9 @@ public class InterestDetectionTests
         Assert.Equal(1, responseCount);
     }
 
-    // Regresión del bug real: un contacto cargado a mano sin el "9" móvil (ej. "541122692061")
+    // Regresión del bug real: un contacto cargado a mano sin el "9" móvil (ej. "541122602000")
     // no matcheaba contra un inbound real de Meta, que siempre lo trae en "from"
-    // (ej. "5491122692061") — el prospecto "desaparecía" para el webhook aunque existiera.
+    // (ej. "5491122602000") — el prospecto "desaparecía" para el webhook aunque existiera.
     [Fact]
     public async Task Inbound_From_Number_With_Mobile9_Matches_Contact_Stored_Without_It()
     {
@@ -151,7 +151,7 @@ public class InterestDetectionTests
                 OrganizationId = orgId,
                 ProspectId = prospectId,
                 Channel = ProspectContactChannel.Whatsapp,
-                Value = "541122692061", // cargado a mano, sin el "9"
+                Value = "541122602000", // cargado a mano, sin el "9"
                 IsPrimary = true
             });
             await seedDb.SaveChangesAsync();
@@ -160,7 +160,7 @@ public class InterestDetectionTests
         await using var db = TestDb.Create(dbName, organizationId: null);
         var service = new InboundMessageService(db, new KeywordIntentClassifier(), new StubMessageProvider(NullLogger<StubMessageProvider>.Instance), new RecordingTelegramNotifier(), NullLogger<InboundMessageService>.Instance);
 
-        var request = new InboundMessageRequest(orgId, "5491122692061", "hola me interesa", ExternalInboundId: "wh-9-fallback");
+        var request = new InboundMessageRequest(orgId, "5491122602000", "hola me interesa", ExternalInboundId: "wh-9-fallback");
         var result = await service.ProcessAsync(request);
 
         Assert.True(result.Succeeded);

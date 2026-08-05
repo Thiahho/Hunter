@@ -41,6 +41,17 @@ const categories: ProspectCategory[] = [
   'Other',
 ];
 
+const categoryLabels: Record<ProspectCategory, string> = {
+  Unknown: 'Sin clasificar',
+  Distributor: 'Mayorista/Distribuidor',
+  AutoPartsStore: 'Casa de repuestos',
+  Workshop: 'Taller',
+  Lubricentro: 'Lubricentro',
+  TireShop: 'Gomería',
+  Reseller: 'Revendedor',
+  Other: 'Otro',
+};
+
 const businessSizes: BusinessSize[] = ['Unknown', 'Micro', 'Small', 'Medium', 'Large'];
 const recurrencePotentials: RecurrencePotential[] = ['Unknown', 'Low', 'Medium', 'High'];
 const statuses: ProspectStatus[] = [
@@ -196,7 +207,7 @@ function EditProspectForm({ prospect, onCancel, onSaved }: EditProspectFormProps
           >
             {categories.map((c) => (
               <option key={c} value={c}>
-                {c}
+                {categoryLabels[c]}
               </option>
             ))}
           </select>
@@ -586,7 +597,7 @@ export function ProspectDetailPage() {
         </Link>
         <h2 className="mt-2 text-lg font-semibold text-slate-900 dark:text-slate-100">{data.businessName}</h2>
         <p className="text-sm text-slate-500 dark:text-slate-400">
-          {data.category} · {data.status}
+          {categoryLabels[data.category]} · {data.status}
         </p>
       </div>
 

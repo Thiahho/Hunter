@@ -37,10 +37,10 @@ public class WhatsAppCloudApiMessageProviderTests
     }
 
     [Theory]
-    [InlineData("5491122692061", "541122692061")] // móvil argentino: se quita el "9"
+    [InlineData("5491122602000", "541122602000")] // móvil argentino: se quita el "9"
     [InlineData("5491112345678", "541112345678")]
     [InlineData("5511987654321", "5511987654321")] // no argentino: queda igual
-    [InlineData("541122692061", "541122692061")] // ya sin el "9": queda igual (idempotente)
+    [InlineData("541122602000", "541122602000")] // ya sin el "9": queda igual (idempotente)
     public void ToMetaWhatsAppFormat_StripsArgentineMobileNine(string stored, string expected)
     {
         Assert.Equal(expected, WhatsAppCloudApiMessageProvider.ToMetaWhatsAppFormat(stored));
@@ -52,10 +52,10 @@ public class WhatsAppCloudApiMessageProviderTests
         var handler = new FakeHttpMessageHandler(HttpStatusCode.OK, """{"messages":[{"id":"wamid.ABC"}]}""");
         var provider = CreateProvider(handler, new WhatsAppCloudApiOptions { PhoneNumberId = "123", AccessToken = "token" });
 
-        await provider.SendAsync(new SendMessageRequest(MessagingChannel.Whatsapp, "5491122692061", "hola"));
+        await provider.SendAsync(new SendMessageRequest(MessagingChannel.Whatsapp, "5491122602000", "hola"));
 
         using var doc = JsonDocument.Parse(handler.LastRequestBody!);
-        Assert.Equal("541122692061", doc.RootElement.GetProperty("to").GetString());
+        Assert.Equal("541122602000", doc.RootElement.GetProperty("to").GetString());
     }
 
     [Fact]

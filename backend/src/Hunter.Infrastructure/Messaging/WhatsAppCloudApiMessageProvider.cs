@@ -57,8 +57,8 @@ public class WhatsAppCloudApiMessageProvider(
     }
 
     // Quirk documentado de Meta para Argentina: nuestros números se guardan con el "9" móvil
-    // (ej. 5491122692061, igual al wa_id real), pero el campo "to" de la Cloud API requiere
-    // el número SIN ese "9" (5411122692061 -> 541122692061) o rechaza el envío / no matchea
+    // (ej. 5491122602000, igual al wa_id real), pero el campo "to" de la Cloud API requiere
+    // el número SIN ese "9" (5411122602000 -> 541122602000) o rechaza el envío / no matchea
     // la lista de números permitidos en modo desarrollo. Confirmado a mano contra la API real.
     public static string ToMetaWhatsAppFormat(string normalizedPhone)
     {

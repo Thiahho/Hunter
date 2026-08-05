@@ -14,6 +14,17 @@ const categories: ProspectCategory[] = [
   'Other',
 ];
 
+const categoryLabels: Record<ProspectCategory, string> = {
+  Unknown: 'Sin clasificar',
+  Distributor: 'Mayorista/Distribuidor',
+  AutoPartsStore: 'Casa de repuestos',
+  Workshop: 'Taller',
+  Lubricentro: 'Lubricentro',
+  TireShop: 'Gomería',
+  Reseller: 'Revendedor',
+  Other: 'Otro',
+};
+
 export function ProspectCreatePage() {
   const navigate = useNavigate();
   const [businessName, setBusinessName] = useState('');
@@ -87,7 +98,7 @@ export function ProspectCreatePage() {
           >
             {categories.map((c) => (
               <option key={c} value={c}>
-                {c}
+                {categoryLabels[c]}
               </option>
             ))}
           </select>

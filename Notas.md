@@ -42,7 +42,7 @@ despierto.
 - **WhatsApp Cloud API real conectado y probado** con número de pruebas de Meta (+1 555 677 5179,
   `PhoneNumberId: 1266621949861306`) y tu número personal como destinatario de prueba.
 - **Bug real encontrado y corregido:** los números argentinos se mandaban a Meta con el "9" de
-  celular (`5491122692061`) y Meta los rechaza así — hay que sacarlo (`541122692061`) en el campo
+  celular (`5491122602000`) y Meta los rechaza así — hay que sacarlo (`541122602000`) en el campo
   `to`. Corregido en `WhatsAppCloudApiMessageProvider.ToMetaWhatsAppFormat`, con test.
 - **Confirmado empíricamente:** texto libre NUNCA entrega a alguien que no te escribió antes
   (sin ventana de 24hs) — hace falta sí o sí una plantilla aprobada por Meta para el primer

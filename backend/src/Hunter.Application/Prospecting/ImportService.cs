@@ -112,11 +112,12 @@ public class ImportService(
         {
             business_name = p.Name,
             phone = p.PhoneNumber,
-            // A diferencia de Google Places, acá NO se asume que el teléfono también sirve para
-            // WhatsApp: OSM guarda muchos fijos, y registrarlos como contacto de WhatsApp
-            // generaría envíos de campaña que Meta rechaza. Solo se marca si es un celular
-            // argentino reconocible.
-            whatsapp = IsWhatsAppCapable(p.PhoneNumber) ? p.PhoneNumber : null,
+            // A diferencia de la versión anterior, sí se asume que un teléfono con forma de
+            // celular argentino (54 + código de área + número) es WhatsApp-capable aunque OSM no
+            // traiga el "9" — ver AssumeWhatsAppCapable. Prioriza no perder leads reales; un
+            // eventual fijo real que se cuele falla el envío de forma visible en vez de en
+            // silencio (Mensajes > Enviados).
+            whatsapp = WhatsAppCapableNumber(p.PhoneNumber),
             address = p.Address,
             city = p.City,
             province = p.Province,
@@ -133,9 +134,16 @@ public class ImportService(
         return Result<ImportPreviewDto>.Success(ToPreviewDto(batch));
     }
 
-    private static bool IsWhatsAppCapable(string? phone) =>
-        !string.IsNullOrWhiteSpace(phone) &&
-        ArgentineMobileDetector.IsWhatsAppCapable(ContactValueNormalizer.Normalize(ProspectContactChannel.Whatsapp, phone));
+    // Devuelve el número ya corregido con el "9" insertado cuando hace falta (ver
+    // AssumeWhatsAppCapable), listo para guardarse directo como contacto de WhatsApp.
+    private static string? WhatsAppCapableNumber(string? phone)
+    {
+        if (string.IsNullOrWhiteSpace(phone))
+            return null;
+
+        var normalized = ContactValueNormalizer.Normalize(ProspectContactChannel.Whatsapp, phone);
+        return ArgentineMobileDetector.AssumeWhatsAppCapable(normalized);
+    }
 
     public async Task<Result<ImportPreviewDto>> GetPreviewAsync(int batchId, CancellationToken ct = default)
     {
