@@ -53,6 +53,11 @@ services:
       OpenStreetMap__UserAgent: ${OSM_USER_AGENT:-HunterCRM/1.0}
       Nominatim__Endpoint: ${NOMINATIM_ENDPOINT:-https://nominatim.openstreetmap.org/search}
       Nominatim__UserAgent: ${NOMINATIM_USER_AGENT:-HunterCRM/1.0}
+      # Fuente alternativa a OpenStreetMap para "Buscar prospectos" (rubro libre vía Google Maps
+      # Scraper de Apify, sin el mapeo cerrado a 5 rubros que tiene OSM). Sin token, el selector
+      # de fuente sigue mostrándose pero la búsqueda falla con el error de Apify.
+      Apify__ApiToken: ${APIFY_API_TOKEN:-}
+      Apify__ActorId: ${APIFY_ACTOR_ID:-compass~crawler-google-places}
       # Sin esto, las alertas de lead nuevo caen a StubTelegramNotifier (solo loguea, no manda
       # nada real). Token/username dados por @BotFather. WebhookSecret es el secret_token que se
       # configura al registrar el webhook (setWebhook) — ver instrucciones de deploy.

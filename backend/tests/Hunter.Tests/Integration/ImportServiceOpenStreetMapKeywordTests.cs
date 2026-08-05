@@ -31,6 +31,12 @@ public class ImportServiceOpenStreetMapKeywordTests
         }
     }
 
+    private class NullApifyGoogleMapsClient : IApifyGoogleMapsClient
+    {
+        public Task<IReadOnlyList<ApifyPlaceResult>> SearchAsync(ApifySearchCriteria criteria, CancellationToken ct = default) =>
+            Task.FromResult<IReadOnlyList<ApifyPlaceResult>>([]);
+    }
+
     private static async Task<(HunterDbContext Db, ImportService Service, SpyOpenStreetMapClient Spy)> BuildAsync()
     {
         var dbName = TestDb.NewDbName();
@@ -47,7 +53,8 @@ public class ImportServiceOpenStreetMapKeywordTests
             new FakeCurrentUserService { OrganizationId = 1, UserId = 1 },
             new ProspectDuplicateFinder(db),
             new NullGooglePlacesClient(),
-            spy);
+            spy,
+            new NullApifyGoogleMapsClient());
 
         return (db, service, spy);
     }

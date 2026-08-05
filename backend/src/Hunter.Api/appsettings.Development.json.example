@@ -31,6 +31,11 @@
   "GooglePlaces": {
     "ApiKey": "CHANGE_ME_GOOGLE_PLACES_API_KEY"
   },
+  "Apify": {
+    "ApiToken": "CHANGE_ME_APIFY_API_TOKEN",
+    "ActorId": "compass~crawler-google-places",
+    "TimeoutSeconds": 280
+  },
   "CampaignQueue": {
     "Enabled": false,
     "PollIntervalSeconds": 60

@@ -46,6 +46,16 @@ public class ImportsController(IImportService importService) : ControllerBase
         return Ok(ApiResponse<ImportPreviewDto>.Ok(result.Value!));
     }
 
+    [HttpPost("apify")]
+    public async Task<IActionResult> ImportFromApify(ApifyImportRequest request, CancellationToken ct)
+    {
+        var result = await importService.ImportFromApifyAsync(request, ct);
+        if (!result.Succeeded)
+            return BadRequest(ApiResponse<ImportPreviewDto>.Fail(result.Error!));
+
+        return Ok(ApiResponse<ImportPreviewDto>.Ok(result.Value!));
+    }
+
     [HttpGet("{id:int}/preview")]
     public async Task<IActionResult> Preview(int id, CancellationToken ct)
     {

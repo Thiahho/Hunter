@@ -82,6 +82,17 @@ public static class DependencyInjection
             client.BaseAddress = new Uri("https://places.googleapis.com/");
         });
 
+        services.Configure<ApifyOptions>(configuration.GetSection(ApifyOptions.SectionName));
+        services.AddHttpClient<IApifyGoogleMapsClient, ApifyGoogleMapsClient>((sp, client) =>
+        {
+            var opts = sp.GetRequiredService<IOptions<ApifyOptions>>().Value;
+            client.BaseAddress = new Uri("https://api.apify.com/");
+            // Margen sobre el timeout que ya le pedimos a Apify en la query string
+            // (run-sync-get-dataset-items?timeout=N): mismo criterio que OpenStreetMapClient, para
+            // no cortar la conexión antes de que el servidor responda.
+            client.Timeout = TimeSpan.FromSeconds(opts.TimeoutSeconds + 20);
+        });
+
         services.Configure<NominatimOptions>(configuration.GetSection(NominatimOptions.SectionName));
         services.AddHttpClient<INominatimClient, NominatimClient>((sp, client) =>
         {

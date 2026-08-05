@@ -14,6 +14,14 @@ public record ImportConfirmResultDto(int BatchId, string Status, int Created);
 
 public record GooglePlacesImportRequest(string Query, int MaxResults = 10);
 
+// Keywords es obligatorio y siempre texto libre (a diferencia de OpenStreetMapImportRequest.Categories):
+// Apify busca por texto contra Google Maps, no hay tags cerrados que mapear, así que cualquier
+// rubro que el usuario escriba sirve tal cual.
+public record ApifyImportRequest(
+    IReadOnlyCollection<string> Localities,
+    IReadOnlyCollection<string> Keywords,
+    int MaxResults = 50);
+
 // Categories vacío/null = se buscan todos los rubros soportados por OSM
 // (OpenStreetMapCategories.Supported). RadiusKm null = búsqueda por límite administrativo
 // (comportamiento original); con valor, se geocodifica cada localidad y se busca en ese radio.

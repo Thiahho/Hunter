@@ -8,6 +8,7 @@ public interface IImportService
     Task<Result<ImportPreviewDto>> ImportCsvAsync(Stream csvStream, string fileName, CancellationToken ct = default);
     Task<Result<ImportPreviewDto>> ImportFromGooglePlacesAsync(GooglePlacesImportRequest request, CancellationToken ct = default);
     Task<Result<ImportPreviewDto>> ImportFromOpenStreetMapAsync(OpenStreetMapImportRequest request, CancellationToken ct = default);
+    Task<Result<ImportPreviewDto>> ImportFromApifyAsync(ApifyImportRequest request, CancellationToken ct = default);
     Task<Result<ImportPreviewDto>> GetPreviewAsync(int batchId, CancellationToken ct = default);
     Task<Result<IReadOnlyCollection<ImportRecordDto>>> GetRecordsAsync(int batchId, CancellationToken ct = default);
     Task<Result<ImportConfirmResultDto>> ConfirmAsync(int batchId, ConfirmImportRequest? request = null, CancellationToken ct = default);

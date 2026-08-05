@@ -47,6 +47,22 @@ export async function searchOpenStreetMap(request: OpenStreetMapImportRequest): 
   return response.data.data;
 }
 
+export interface ApifyImportRequest {
+  localities: string[];
+  keywords: string[];
+  maxResults?: number;
+}
+
+// A diferencia de searchOpenStreetMap, acá el rubro siempre es texto libre (keywords): Apify
+// scrapea Google Maps por texto, no hay categorías cerradas que resolver del lado del cliente.
+export async function searchApify(request: ApifyImportRequest): Promise<ImportPreviewDto> {
+  const response = await apiClient.post<ApiResponse<ImportPreviewDto>>('/imports/apify', request);
+  if (!response.data.success || !response.data.data) {
+    throw new Error(response.data.message ?? 'No se pudo buscar en Google Maps (Apify).');
+  }
+  return response.data.data;
+}
+
 export async function getImportRecords(batchId: number): Promise<ImportRecordDto[]> {
   const response = await apiClient.get<ApiResponse<ImportRecordDto[]>>(`/imports/${batchId}/records`);
   if (!response.data.success || !response.data.data) {

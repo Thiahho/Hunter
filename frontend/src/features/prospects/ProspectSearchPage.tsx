@@ -6,6 +6,7 @@ import {
   cancelImport,
   confirmImport,
   getImportRecords,
+  searchApify,
   searchOpenStreetMap,
   type ImportConfirmResultDto,
   type ImportPreviewDto,
@@ -92,7 +93,10 @@ const automationStatusClass: Record<ScheduledAutomationStatus, string> = {
 const inputClass =
   'mt-1 w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-slate-900 dark:text-slate-100';
 
+type SearchSource = 'osm' | 'apify';
+
 export function ProspectSearchPage() {
+  const [source, setSource] = useState<SearchSource>('osm');
   const [selectedCategories, setSelectedCategories] = useState<ProspectCategory[]>([]);
   const [keywords, setKeywords] = useState<string[]>([]);
   const [categoryInput, setCategoryInput] = useState('');
@@ -107,27 +111,40 @@ export function ProspectSearchPage() {
   const [lastResult, setLastResult] = useState<ImportConfirmResultDto | null>(null);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
 
+  const onSearchSuccess = (result: ImportPreviewDto) => {
+    setLastResult(null);
+    setPreview(result);
+    setBatchId(result.batchId);
+  };
+
   const searchMutation = useMutation({
     mutationFn: searchOpenStreetMap,
-    onSuccess: (result) => {
-      setLastResult(null);
-      setPreview(result);
-      setBatchId(result.batchId);
-    },
+    onSuccess: onSearchSuccess,
   });
+
+  // Apify no tiene el problema de timeout de Overpass (es un servicio pago con su propio límite
+  // de 300s del lado de Apify, no un servidor público bajo carga), pero igual puede tardar según
+  // cuántas combinaciones rubro×localidad se pidan.
+  const apifyMutation = useMutation({
+    mutationFn: searchApify,
+    onSuccess: onSearchSuccess,
+  });
+
+  const activeMutation = source === 'osm' ? searchMutation : apifyMutation;
 
   // Overpass (el servidor público de OSM) puede tardar bastante bajo carga (ver
   // OpenStreetMapClient.PostWithRetryAsync — reintenta con backoff en 429/504), así que un
   // simple "Buscando…" no alcanza para saber si sigue vivo. El contador de segundos es la señal
-  // más simple de "esto sigue corriendo, no se colgó".
+  // más simple de "esto sigue corriendo, no se colgó". Se reusa igual para Apify: aunque no tenga
+  // el mismo problema de carga pública, la señal de "sigue corriendo" sirve igual.
   useEffect(() => {
-    if (!searchMutation.isPending) {
+    if (!activeMutation.isPending) {
       setElapsedSeconds(0);
       return;
     }
     const interval = setInterval(() => setElapsedSeconds((s) => s + 1), 1000);
     return () => clearInterval(interval);
-  }, [searchMutation.isPending]);
+  }, [activeMutation.isPending]);
 
   const recordsQuery = useQuery({
     queryKey: ['import-records', batchId],
@@ -267,17 +284,30 @@ export function ProspectSearchPage() {
     });
   }
 
+  // Apify no distingue "categoría conocida" de "rubro libre" (busca todo por texto contra Google
+  // Maps), así que para esa fuente los chips de categoría se mandan por su label en español igual
+  // que los de keyword, en vez de resolverse a ProspectCategory.
+  const apifyRubroTerms = [
+    ...selectedCategories.map((c) => categoryLabelByValue.get(c) ?? c),
+    ...keywords,
+  ];
+
   function handleSubmit(event: FormEvent) {
     event.preventDefault();
     if (localities.length === 0) return;
 
-    searchMutation.mutate({
-      localities,
-      categories: selectedCategories.length > 0 ? selectedCategories : undefined,
-      keywords: keywords.length > 0 ? keywords : undefined,
-      radiusKm,
-      maxResults,
-    });
+    if (source === 'osm') {
+      searchMutation.mutate({
+        localities,
+        categories: selectedCategories.length > 0 ? selectedCategories : undefined,
+        keywords: keywords.length > 0 ? keywords : undefined,
+        radiusKm,
+        maxResults,
+      });
+    } else {
+      if (apifyRubroTerms.length === 0) return;
+      apifyMutation.mutate({ localities, keywords: apifyRubroTerms, maxResults });
+    }
   }
 
   const records = recordsQuery.data ?? [];
@@ -289,7 +319,7 @@ export function ProspectSearchPage() {
         <Link to="/app/prospects" className="text-sm text-indigo-600 dark:text-indigo-400 hover:underline">
           ← Volver a prospectos
         </Link>
-        <h2 className="mt-2 text-lg font-semibold text-slate-900 dark:text-slate-100">Buscar prospectos (OpenStreetMap)</h2>
+        <h2 className="mt-2 text-lg font-semibold text-slate-900 dark:text-slate-100">Buscar prospectos</h2>
         <p className="text-sm text-slate-500 dark:text-slate-400">
           Buscá negocios por rubro y zona. Revisá los resultados y elegí cuáles importar como prospectos.
         </p>
@@ -305,6 +335,39 @@ export function ProspectSearchPage() {
         onSubmit={handleSubmit}
         className="space-y-4 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5"
       >
+        <div>
+          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Fuente</label>
+          <div className="mt-1 flex gap-2">
+            <button
+              type="button"
+              onClick={() => setSource('osm')}
+              className={`rounded-md border px-3 py-2 text-sm font-medium ${
+                source === 'osm'
+                  ? 'border-indigo-600 bg-indigo-50 text-indigo-700 dark:border-indigo-500 dark:bg-indigo-500/10 dark:text-indigo-300'
+                  : 'border-slate-300 text-slate-600 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800'
+              }`}
+            >
+              OpenStreetMap
+            </button>
+            <button
+              type="button"
+              onClick={() => setSource('apify')}
+              className={`rounded-md border px-3 py-2 text-sm font-medium ${
+                source === 'apify'
+                  ? 'border-indigo-600 bg-indigo-50 text-indigo-700 dark:border-indigo-500 dark:bg-indigo-500/10 dark:text-indigo-300'
+                  : 'border-slate-300 text-slate-600 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800'
+              }`}
+            >
+              Google Maps (Apify)
+            </button>
+          </div>
+          <p className="mt-1 text-xs text-slate-400">
+            {source === 'osm'
+              ? 'Gratis. Cubre bien los 5 rubros automotrices; un rubro libre puede no encontrar el negocio si no tiene nombre/teléfono cargado en OpenStreetMap.'
+              : 'Servicio pago (Apify, ~USD 1.50 cada 1000 resultados). Busca cualquier rubro directo en Google Maps, igual que buscarlo a mano.'}
+          </p>
+        </div>
+
         <div>
           <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Rubro</label>
           <div className="mt-1 flex gap-2">
@@ -368,8 +431,9 @@ export function ProspectSearchPage() {
             </div>
           )}
           <p className="mt-1 text-xs text-slate-400">
-            Sin selección = se buscan todos los rubros. Un rubro fuera de la lista (ej. "peluquería") se agrega como
-            término libre y se busca por nombre de negocio.
+            {source === 'osm'
+              ? 'Sin selección = se buscan todos los rubros. Un rubro fuera de la lista (ej. "peluquería") se agrega como término libre y se busca por nombre de negocio.'
+              : 'Con Google Maps (Apify) hace falta al menos un rubro: se busca tal cual, sin restricción a los 5 automotrices.'}
           </p>
         </div>
 
@@ -419,21 +483,23 @@ export function ProspectSearchPage() {
         </div>
 
         <div className="flex flex-wrap items-end gap-4">
-          <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Radio de búsqueda</label>
-            <select
-              value={radiusKm}
-              onChange={(e) => setRadiusKm(Number(e.target.value))}
-              className={`${inputClass} w-32`}
-            >
-              {RADIUS_OPTIONS_KM.map((km) => (
-                <option key={km} value={km}>
-                  {km} km
-                </option>
-              ))}
-            </select>
-            <p className="mt-1 text-xs text-slate-400">Alrededor de cada localidad.</p>
-          </div>
+          {source === 'osm' && (
+            <div>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Radio de búsqueda</label>
+              <select
+                value={radiusKm}
+                onChange={(e) => setRadiusKm(Number(e.target.value))}
+                className={`${inputClass} w-32`}
+              >
+                {RADIUS_OPTIONS_KM.map((km) => (
+                  <option key={km} value={km}>
+                    {km} km
+                  </option>
+                ))}
+              </select>
+              <p className="mt-1 text-xs text-slate-400">Alrededor de cada localidad.</p>
+            </div>
+          )}
 
           <div>
             <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Máximo de resultados</label>
@@ -448,24 +514,27 @@ export function ProspectSearchPage() {
           </div>
         </div>
 
-        {searchMutation.isError && (
+        {activeMutation.isError && (
           <p className="text-sm text-red-600 dark:text-red-400">
-            {searchMutation.error instanceof Error ? searchMutation.error.message : 'Ocurrió un error inesperado.'}
+            {activeMutation.error instanceof Error ? activeMutation.error.message : 'Ocurrió un error inesperado.'}
           </p>
         )}
 
         <div className="flex flex-wrap items-center gap-3">
           <button
             type="submit"
-            disabled={searchMutation.isPending || localities.length === 0}
+            disabled={
+              activeMutation.isPending || localities.length === 0 || (source === 'apify' && apifyRubroTerms.length === 0)
+            }
             className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-60"
           >
-            {searchMutation.isPending ? `Buscando… (${elapsedSeconds}s)` : 'Buscar'}
+            {activeMutation.isPending ? `Buscando… (${elapsedSeconds}s)` : 'Buscar'}
           </button>
-          {searchMutation.isPending && (
+          {activeMutation.isPending && (
             <p className="text-xs text-slate-400">
-              Puede tardar hasta 1 minuto según la carga del servidor público de OpenStreetMap. Sigue en curso, no
-              cierres esta pestaña.
+              {source === 'osm'
+                ? 'Puede tardar hasta 1 minuto según la carga del servidor público de OpenStreetMap. Sigue en curso, no cierres esta pestaña.'
+                : 'Puede tardar según cuántas combinaciones de rubro y zona se estén buscando. Sigue en curso, no cierres esta pestaña.'}
             </p>
           )}
         </div>
@@ -476,7 +545,8 @@ export function ProspectSearchPage() {
           <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Programar automatización</h3>
           <p className="text-xs text-slate-500 dark:text-slate-400">
             Elegí una fecha/hora: en ese momento el sistema busca los prospectos con el rubro y zonas de arriba, los
-            guarda automáticamente y envía la campaña seleccionada sin revisión manual.
+            guarda automáticamente y envía la campaña seleccionada sin revisión manual. Siempre busca por
+            OpenStreetMap (gratis) — el selector de fuente de arriba solo aplica a la búsqueda manual.
           </p>
         </div>
 

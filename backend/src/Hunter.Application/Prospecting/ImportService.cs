@@ -15,7 +15,8 @@ public class ImportService(
     ICurrentUserService currentUser,
     IProspectDuplicateFinder duplicateFinder,
     IGooglePlacesClient googlePlacesClient,
-    IOpenStreetMapClient openStreetMapClient) : IImportService
+    IOpenStreetMapClient openStreetMapClient,
+    IApifyGoogleMapsClient apifyGoogleMapsClient) : IImportService
 {
     public async Task<Result<ImportPreviewDto>> ImportCsvAsync(Stream csvStream, string fileName, CancellationToken ct = default)
     {
@@ -150,6 +151,67 @@ public class ImportService(
 
         var batch = await BuildBatchAsync(
             rows, $"openstreetmap: {string.Join(", ", localities)}", ProspectSourceType.OpenStreetMap, organizationId, ct);
+
+        db.ImportBatches.Add(batch);
+        await db.SaveChangesAsync(ct);
+
+        return Result<ImportPreviewDto>.Success(ToPreviewDto(batch));
+    }
+
+    private const int MaxApifyLocalities = 5;
+    private const int MaxApifyKeywords = 5;
+
+    // Fuente alternativa a OpenStreetMap (ver ProspectSearchPage, selector de fuente): a
+    // diferencia de OSM, acá el rubro SIEMPRE es texto libre — Apify scrapea Google Maps por
+    // texto, no hay tags cerrados que mapear, así que cualquier rubro que el usuario escriba
+    // sirve tal cual. MaxApifyKeywords acota la combinatoria localidades×rubros (cada combinación
+    // es una búsqueda separada dentro del actor, y es un servicio pago).
+    public async Task<Result<ImportPreviewDto>> ImportFromApifyAsync(ApifyImportRequest request, CancellationToken ct = default)
+    {
+        var localities = (request.Localities ?? [])
+            .Select(l => l?.Trim())
+            .Where(l => !string.IsNullOrWhiteSpace(l))
+            .Select(l => l!)
+            .Distinct()
+            .ToList();
+
+        if (localities.Count == 0)
+            return Result<ImportPreviewDto>.Failure("Debe indicar al menos una zona o localidad.");
+        if (localities.Count > MaxApifyLocalities)
+            return Result<ImportPreviewDto>.Failure($"Máximo {MaxApifyLocalities} localidades por búsqueda.");
+
+        var keywords = (request.Keywords ?? [])
+            .Select(k => k?.Trim())
+            .Where(k => !string.IsNullOrWhiteSpace(k))
+            .Select(k => k!)
+            .Distinct()
+            .ToList();
+
+        if (keywords.Count == 0)
+            return Result<ImportPreviewDto>.Failure("Debe indicar al menos un rubro a buscar.");
+        if (keywords.Count > MaxApifyKeywords)
+            return Result<ImportPreviewDto>.Failure($"Máximo {MaxApifyKeywords} rubros por búsqueda.");
+
+        var organizationId = currentUser.OrganizationId!.Value;
+
+        var criteria = new ApifySearchCriteria(keywords, localities, request.MaxResults);
+        var places = await apifyGoogleMapsClient.SearchAsync(criteria, ct);
+        if (places.Count == 0)
+            return Result<ImportPreviewDto>.Failure("Apify (Google Maps) no devolvió resultados (o la búsqueda falló).");
+
+        var rows = places.Select(p => new ProspectCsvRow
+        {
+            business_name = p.Name,
+            phone = p.PhoneNumber,
+            whatsapp = WhatsAppCapableNumber(p.PhoneNumber),
+            address = p.Address,
+            city = p.City,
+            province = p.Province,
+            source = "apify"
+        }).ToList();
+
+        var batch = await BuildBatchAsync(
+            rows, $"apify: {string.Join(", ", keywords)} — {string.Join(", ", localities)}", ProspectSourceType.ExternalApi, organizationId, ct);
 
         db.ImportBatches.Add(batch);
         await db.SaveChangesAsync(ct);

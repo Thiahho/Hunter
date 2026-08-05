@@ -24,12 +24,19 @@ public class ImportServiceConfirmSelectionTests
             Task.FromResult<IReadOnlyList<OpenStreetMapPlaceResult>>([]);
     }
 
+    private class NullApifyGoogleMapsClient : IApifyGoogleMapsClient
+    {
+        public Task<IReadOnlyList<ApifyPlaceResult>> SearchAsync(ApifySearchCriteria criteria, CancellationToken ct = default) =>
+            Task.FromResult<IReadOnlyList<ApifyPlaceResult>>([]);
+    }
+
     private static ImportService BuildService(HunterDbContext db, int organizationId) => new(
         db,
         new FakeCurrentUserService { OrganizationId = organizationId, UserId = 1 },
         new ProspectDuplicateFinder(db),
         new NullGooglePlacesClient(),
-        new NullOpenStreetMapClient());
+        new NullOpenStreetMapClient(),
+        new NullApifyGoogleMapsClient());
 
     private static async Task<(string DbName, int OrgId)> SeedOrganizationAsync()
     {
