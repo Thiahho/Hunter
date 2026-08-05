@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent, type KeyboardEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router';
 import type { ProspectCategory } from '../../api/prospects';
@@ -108,6 +108,7 @@ export function ProspectSearchPage() {
   const [preview, setPreview] = useState<ImportPreviewDto | null>(null);
   const [batchId, setBatchId] = useState<number | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const selectAllRef = useRef<HTMLInputElement>(null);
   const [lastResult, setLastResult] = useState<ImportConfirmResultDto | null>(null);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
 
@@ -284,6 +285,13 @@ export function ProspectSearchPage() {
     });
   }
 
+  function toggleAll(selectableIds: number[]) {
+    setSelectedIds((prev) => {
+      const allSelected = selectableIds.length > 0 && selectableIds.every((id) => prev.has(id));
+      return allSelected ? new Set() : new Set(selectableIds);
+    });
+  }
+
   // Apify no distingue "categoría conocida" de "rubro libre" (busca todo por texto contra Google
   // Maps), así que para esa fuente los chips de categoría se mandan por su label en español igual
   // que los de keyword, en vez de resolverse a ProspectCategory.
@@ -312,6 +320,12 @@ export function ProspectSearchPage() {
 
   const records = recordsQuery.data ?? [];
   const selectableRecords = records.filter((r) => r.status === 'Valid');
+  const allSelected = selectableRecords.length > 0 && selectableRecords.every((r) => selectedIds.has(r.id));
+  const someSelected = selectedIds.size > 0 && !allSelected;
+
+  useEffect(() => {
+    if (selectAllRef.current) selectAllRef.current.indeterminate = someSelected;
+  }, [someSelected]);
 
   return (
     <div className="max-w-4xl space-y-4">
@@ -668,7 +682,18 @@ export function ProspectSearchPage() {
             <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-800 text-sm">
               <thead className="bg-slate-50 dark:bg-slate-900">
                 <tr>
-                  <th className="px-3 py-2 text-left font-medium text-slate-500 dark:text-slate-400"></th>
+                  <th className="px-3 py-2 text-left font-medium text-slate-500 dark:text-slate-400">
+                    {selectableRecords.length > 0 && (
+                      <input
+                        ref={selectAllRef}
+                        type="checkbox"
+                        checked={allSelected}
+                        onChange={() => toggleAll(selectableRecords.map((r) => r.id))}
+                        aria-label="Seleccionar todos"
+                        className="rounded border-slate-300 dark:border-slate-700"
+                      />
+                    )}
+                  </th>
                   <th className="px-3 py-2 text-left font-medium text-slate-500 dark:text-slate-400">Nombre</th>
                   <th className="px-3 py-2 text-left font-medium text-slate-500 dark:text-slate-400">Rubro</th>
                   <th className="px-3 py-2 text-left font-medium text-slate-500 dark:text-slate-400">Teléfono</th>
