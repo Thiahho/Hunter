@@ -9,7 +9,7 @@ using Microsoft.AspNetCore.Mvc;
 namespace Hunter.Api.Controllers;
 
 [ApiController]
-[Authorize(Roles = RoleNames.Owner)]
+[Authorize(Roles = $"{RoleNames.Owner},{RoleNames.Admin}")]
 [Route("api/v1/users")]
 public class UsersController(IUserService userService, ICurrentUserService currentUserService) : ControllerBase
 {

@@ -7,6 +7,7 @@ import { ProspectCreatePage } from './features/prospects/ProspectCreatePage';
 import { ProspectSearchPage } from './features/prospects/ProspectSearchPage';
 import { LeadsKanbanPage } from './features/leads/LeadsKanbanPage';
 import { LeadDetailPage } from './features/leads/LeadDetailPage';
+import { UsersPage } from './features/users/UsersPage';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { Layout } from './components/Layout';
 
@@ -87,6 +88,17 @@ export default function App() {
           <ProtectedRoute>
             <Layout>
               <LeadDetailPage />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/app/users"
+        element={
+          <ProtectedRoute allowedRoles={['OWNER', 'ADMIN']}>
+            <Layout>
+              <UsersPage />
             </Layout>
           </ProtectedRoute>
         }

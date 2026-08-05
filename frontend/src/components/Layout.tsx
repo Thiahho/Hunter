@@ -11,6 +11,8 @@ const navItems = [
   { to: '/app/leads', label: 'Leads' },
 ];
 
+const userManagementRoles = ['OWNER', 'ADMIN'];
+
 export function Layout({ children }: { children: ReactNode }) {
   const user = useAuthStore((state) => state.user);
   const clearSession = useAuthStore((state) => state.clearSession);
@@ -52,6 +54,20 @@ export function Layout({ children }: { children: ReactNode }) {
               {item.label}
             </NavLink>
           ))}
+          {user?.roles.some((role) => userManagementRoles.includes(role)) && (
+            <NavLink
+              to="/app/users"
+              className={({ isActive }) =>
+                `block rounded-md px-3 py-2 text-sm font-medium ${
+                  isActive
+                    ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-300'
+                    : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'
+                }`
+              }
+            >
+              Usuarios
+            </NavLink>
+          )}
         </nav>
 
         <div className="border-t border-slate-200 dark:border-slate-800 p-3">
