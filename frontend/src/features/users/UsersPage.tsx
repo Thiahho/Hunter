@@ -214,7 +214,12 @@ export function UsersPage() {
                   </td>
                   <td className="px-4 py-2">
                     {user.telegramChatId ? (
-                      <span className="text-xs font-medium text-emerald-600 dark:text-emerald-400">Vinculado ✓</span>
+                      <div>
+                        <span className="text-xs font-medium text-emerald-600 dark:text-emerald-400">Vinculado ✓</span>
+                        <p className="font-mono text-xs text-slate-400" title="Telegram chat_id">
+                          {user.telegramChatId}
+                        </p>
+                      </div>
                     ) : (
                       <span className="text-xs text-slate-400">Sin vincular</span>
                     )}
