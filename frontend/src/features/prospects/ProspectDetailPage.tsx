@@ -705,10 +705,12 @@ export function ProspectDetailPage() {
         </section>
       </div>
 
-      <section className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4">
-        <h3 className="mb-3 text-sm font-medium text-slate-500 dark:text-slate-400">Conversación</h3>
-        <ConversationSection prospectId={data.id} />
-      </section>
+      <details className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4" open>
+        <summary className="cursor-pointer text-sm font-medium text-slate-500 dark:text-slate-400">Conversación</summary>
+        <div className="mt-3 max-h-96 overflow-y-auto pr-1">
+          <ConversationSection prospectId={data.id} />
+        </div>
+      </details>
 
       {data.contacts.some((c) => c.channel === 'Whatsapp') && (
         <section className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4">
