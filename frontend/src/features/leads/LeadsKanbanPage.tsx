@@ -52,16 +52,23 @@ function LeadCard({
   isDragging,
   onDragStart,
   onDragEnd,
+  onMoveTo,
 }: {
   lead: LeadListItem;
   draggable: boolean;
   isDragging: boolean;
   onDragStart: () => void;
   onDragEnd: () => void;
+  onMoveTo: (status: LeadStatus) => void;
 }) {
+  // El drag & drop nativo de HTML5 no dispara con touch en celular, así que el selector "Mover
+  // a…" es la forma real de cambiar de columna en mobile (y una alternativa más rápida en
+  // desktop para quien no quiera arrastrar). Vive fuera del <Link> a propósito: un <select>
+  // adentro de un <a> no es válido HTML y el navegador puede confundir el click.
+  const moveOptions = columns.filter((c) => isValidTransition(lead.status, c.status));
+
   return (
-    <Link
-      to={`/app/leads/${lead.id}`}
+    <div
       draggable={draggable}
       onDragStart={(e) => {
         if (!draggable) {
@@ -72,15 +79,36 @@ function LeadCard({
         onDragStart();
       }}
       onDragEnd={onDragEnd}
-      className={`block rounded-md border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3 hover:border-indigo-300 dark:hover:border-indigo-700 ${
+      className={`rounded-md border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3 hover:border-indigo-300 dark:hover:border-indigo-700 ${
         draggable ? 'cursor-grab active:cursor-grabbing' : ''
       } ${isDragging ? 'opacity-40' : ''}`}
     >
-      <p className="text-sm font-medium text-slate-900 dark:text-slate-100">{lead.prospectBusinessName}</p>
-      <span className={`mt-1 inline-block rounded px-1.5 py-0.5 text-xs ${priorityColors[lead.priority]}`}>
-        {lead.priority}
-      </span>
-    </Link>
+      <Link to={`/app/leads/${lead.id}`} className="block">
+        <p className="text-sm font-medium text-slate-900 dark:text-slate-100">{lead.prospectBusinessName}</p>
+        <span className={`mt-1 inline-block rounded px-1.5 py-0.5 text-xs ${priorityColors[lead.priority]}`}>
+          {lead.priority}
+        </span>
+      </Link>
+      {moveOptions.length > 0 && (
+        <select
+          value=""
+          onChange={(e) => {
+            const status = e.target.value as LeadStatus;
+            if (status) onMoveTo(status);
+            e.target.value = '';
+          }}
+          aria-label={`Mover "${lead.prospectBusinessName}" a otra columna`}
+          className="mt-2 w-full rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2 py-1 text-xs text-slate-600 dark:text-slate-300"
+        >
+          <option value="">Mover a…</option>
+          {moveOptions.map((c) => (
+            <option key={c.status} value={c.status}>
+              {c.label}
+            </option>
+          ))}
+        </select>
+      )}
+    </div>
   );
 }
 
@@ -137,11 +165,8 @@ export function LeadsKanbanPage() {
     },
   });
 
-  function handleDrop(targetStatus: LeadStatus) {
-    const lead = draggedLead;
-    setDraggedLead(null);
-
-    if (!lead || !isValidTransition(lead.status, targetStatus)) return;
+  function handleTargetChosen(lead: LeadListItem, targetStatus: LeadStatus) {
+    if (!isValidTransition(lead.status, targetStatus)) return;
 
     if (targetStatus === 'InProgress') {
       inProgressMutation.mutate(lead.id);
@@ -150,6 +175,12 @@ export function LeadsKanbanPage() {
     } else if (targetStatus === 'Lost') {
       setLostTarget(lead);
     }
+  }
+
+  function handleDrop(targetStatus: LeadStatus) {
+    const lead = draggedLead;
+    setDraggedLead(null);
+    if (lead) handleTargetChosen(lead, targetStatus);
   }
 
   if (isLoading) {
@@ -169,8 +200,9 @@ export function LeadsKanbanPage() {
       <div>
         <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Leads</h2>
         <p className="text-sm text-slate-500 dark:text-slate-400">
-          Arrastrá una tarjeta a otra columna para cambiar su estado. Ganado y Perdido son finales: no se pueden
-          reabrir desde acá.
+          Arrastrá una tarjeta a otra columna para cambiar su estado, o usá el selector "Mover a…" de cada tarjeta
+          (necesario en mobile, donde no hay drag & drop). Ganado y Perdido son finales: no se pueden reabrir desde
+          acá.
         </p>
       </div>
 
@@ -206,6 +238,7 @@ export function LeadsKanbanPage() {
                     isDragging={draggedLead?.id === lead.id}
                     onDragStart={() => setDraggedLead(lead)}
                     onDragEnd={() => setDraggedLead(null)}
+                    onMoveTo={(status) => handleTargetChosen(lead, status)}
                   />
                 ))}
                 {items.length === 0 && <p className="text-xs text-slate-400">Sin leads.</p>}

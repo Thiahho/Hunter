@@ -36,4 +36,28 @@ public class MessageResponseQueryService(IHunterDbContext db) : IMessageResponse
 
         return new PagedResult<MessageResponseDto> { Items = items, Page = page, PageSize = pageSize, TotalItems = totalItems };
     }
+
+    public async Task<Result<bool>> DeleteAsync(int id, CancellationToken ct = default)
+    {
+        var response = await db.MessageResponses.FirstOrDefaultAsync(r => r.Id == id, ct);
+        if (response is null)
+            return Result<bool>.Failure("Respuesta no encontrada.");
+
+        db.MessageResponses.Remove(response);
+        await db.SaveChangesAsync(ct);
+
+        return Result<bool>.Success(true);
+    }
+
+    public async Task<Result<int>> DeleteManyAsync(IReadOnlyCollection<int> ids, CancellationToken ct = default)
+    {
+        if (ids.Count == 0)
+            return Result<int>.Success(0);
+
+        var responses = await db.MessageResponses.Where(r => ids.Contains(r.Id)).ToListAsync(ct);
+        db.MessageResponses.RemoveRange(responses);
+        await db.SaveChangesAsync(ct);
+
+        return Result<int>.Success(responses.Count);
+    }
 }

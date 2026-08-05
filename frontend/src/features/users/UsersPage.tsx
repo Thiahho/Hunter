@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useState, type FormEvent, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   createUser,
@@ -183,62 +183,79 @@ export function UsersPage() {
         </p>
       )}
 
-      {usersQuery.data && (
-        <div className="overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-800">
-          <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-800 text-sm">
-            <thead className="bg-slate-50 dark:bg-slate-900">
-              <tr>
-                <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">Nombre</th>
-                <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">Email</th>
-                <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">Rol</th>
-                <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">Área</th>
-                <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">Teléfono</th>
-                <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">Chat ID de Telegram</th>
-                <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">Activo</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100 dark:divide-slate-800 bg-white dark:bg-slate-950">
-              {users.map((user) => (
-                <UserRow
-                  key={user.id}
-                  user={user}
-                  isSaving={updateMutation.isPending}
-                  canEditEmail={isOwner}
-                  onAreaChange={(newArea) => handleAreaChange(user, newArea)}
-                  onToggleActive={() => handleToggleActive(user)}
-                  onSaveContact={(request) => handleSaveContact(user.id, request)}
-                />
-              ))}
-              {users.length === 0 && (
+      {usersQuery.data && users.length === 0 && (
+        <p className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-4 py-6 text-center text-sm text-slate-400">
+          No hay usuarios todavía.
+        </p>
+      )}
+
+      {usersQuery.data && users.length > 0 && (
+        <>
+          {/* Tabla en sm: y para arriba; tarjetas apiladas en mobile — esta fila tiene demasiados
+              inputs editables (email, área, teléfono, chatId) como para que el scroll horizontal
+              de una tabla sea cómodo de usar con el dedo. */}
+          <div className="hidden overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-800 sm:block">
+            <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-800 text-sm">
+              <thead className="bg-slate-50 dark:bg-slate-900">
                 <tr>
-                  <td colSpan={7} className="px-4 py-6 text-center text-slate-400">
-                    No hay usuarios todavía.
-                  </td>
+                  <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">Nombre</th>
+                  <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">Email</th>
+                  <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">Rol</th>
+                  <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">Área</th>
+                  <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">Teléfono</th>
+                  <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">Chat ID de Telegram</th>
+                  <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">Activo</th>
                 </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800 bg-white dark:bg-slate-950">
+                {users.map((user) => (
+                  <UserRow
+                    key={user.id}
+                    user={user}
+                    isSaving={updateMutation.isPending}
+                    canEditEmail={isOwner}
+                    onAreaChange={(newArea) => handleAreaChange(user, newArea)}
+                    onToggleActive={() => handleToggleActive(user)}
+                    onSaveContact={(request) => handleSaveContact(user.id, request)}
+                  />
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="space-y-3 sm:hidden">
+            {users.map((user) => (
+              <UserCard
+                key={user.id}
+                user={user}
+                isSaving={updateMutation.isPending}
+                canEditEmail={isOwner}
+                onAreaChange={(newArea) => handleAreaChange(user, newArea)}
+                onToggleActive={() => handleToggleActive(user)}
+                onSaveContact={(request) => handleSaveContact(user.id, request)}
+              />
+            ))}
+          </div>
+        </>
       )}
     </div>
   );
 }
 
-function UserRow({
-  user,
-  isSaving,
-  canEditEmail,
-  onAreaChange,
-  onToggleActive,
-  onSaveContact,
-}: {
+interface UserFieldsProps {
   user: UserDto;
   isSaving: boolean;
   canEditEmail: boolean;
   onAreaChange: (area: UserArea) => void;
   onToggleActive: () => void;
   onSaveContact: (request: UpdateUserRequest) => void;
-}) {
+}
+
+// Estado compartido entre la fila de tabla (desktop) y la tarjeta (mobile): mismo usuario,
+// mismos campos editables, dos presentaciones. Cada vista mantiene su propia instancia del
+// hook (una siempre queda oculta por CSS, nunca las dos visibles a la vez), así que no hay
+// riesgo real de que diverjan salvo que se resista la ventana a mitad de una edición sin guardar.
+function useEditableUserFields(user: UserDto, canEditEmail: boolean, onSaveContact: (request: UpdateUserRequest) => void) {
   const [email, setEmail] = useState(user.email);
   const [phone, setPhone] = useState(user.phone ?? '');
   const [telegramChatId, setTelegramChatId] = useState(user.telegramChatId ?? '');
@@ -252,6 +269,13 @@ function UserRow({
       telegramChatId: telegramChatId || null,
     });
   }
+
+  return { email, setEmail, phone, setPhone, telegramChatId, setTelegramChatId, dirty, handleSave };
+}
+
+function UserRow({ user, isSaving, canEditEmail, onAreaChange, onToggleActive, onSaveContact }: UserFieldsProps) {
+  const { email, setEmail, phone, setPhone, telegramChatId, setTelegramChatId, dirty, handleSave } =
+    useEditableUserFields(user, canEditEmail, onSaveContact);
 
   return (
     <tr className={user.isActive ? 'hover:bg-slate-50 dark:hover:bg-slate-900' : 'opacity-50'}>
@@ -326,5 +350,103 @@ function UserRow({
         </label>
       </td>
     </tr>
+  );
+}
+
+const cardFieldInputClass =
+  'w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2 py-1.5 text-sm text-slate-900 dark:text-slate-100';
+
+function CardField({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="mt-3">
+      <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">{label}</label>
+      <div className="mt-1">{children}</div>
+    </div>
+  );
+}
+
+function UserCard({ user, isSaving, canEditEmail, onAreaChange, onToggleActive, onSaveContact }: UserFieldsProps) {
+  const { email, setEmail, phone, setPhone, telegramChatId, setTelegramChatId, dirty, handleSave } =
+    useEditableUserFields(user, canEditEmail, onSaveContact);
+
+  return (
+    <div
+      className={`rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 ${
+        user.isActive ? '' : 'opacity-50'
+      }`}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <p className="text-sm font-medium text-slate-900 dark:text-slate-100">
+            {user.firstName} {user.lastName}
+          </p>
+          <p className="text-xs text-slate-500 dark:text-slate-400">{user.roles.join(', ')}</p>
+        </div>
+        <label className="flex shrink-0 items-center gap-1.5 text-xs text-slate-600 dark:text-slate-300">
+          <input
+            type="checkbox"
+            checked={user.isActive}
+            onChange={onToggleActive}
+            disabled={isSaving}
+            className="rounded border-slate-300 dark:border-slate-700"
+          />
+          {user.isActive ? 'Activo' : 'Inactivo'}
+        </label>
+      </div>
+
+      <CardField label="Email">
+        {canEditEmail ? (
+          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className={cardFieldInputClass} />
+        ) : (
+          <p className="text-sm text-slate-600 dark:text-slate-300">{user.email}</p>
+        )}
+      </CardField>
+
+      <CardField label="Área">
+        <select
+          value={user.area}
+          onChange={(e) => onAreaChange(e.target.value as UserArea)}
+          disabled={isSaving}
+          className={cardFieldInputClass}
+        >
+          {areaOptions.map((option) => (
+            <option key={option.value} value={option.value}>
+              {areaLabels[option.value]}
+            </option>
+          ))}
+        </select>
+      </CardField>
+
+      <CardField label="Teléfono">
+        <input
+          type="text"
+          value={phone}
+          onChange={(e) => setPhone(e.target.value)}
+          placeholder="Sin teléfono"
+          className={cardFieldInputClass}
+        />
+      </CardField>
+
+      <CardField label="Chat ID de Telegram">
+        <input
+          type="text"
+          value={telegramChatId}
+          onChange={(e) => setTelegramChatId(e.target.value)}
+          placeholder="Sin vincular"
+          className={`${cardFieldInputClass} font-mono`}
+        />
+      </CardField>
+
+      {dirty && (
+        <button
+          type="button"
+          onClick={handleSave}
+          disabled={isSaving}
+          className="mt-3 w-full rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-500 disabled:opacity-60"
+        >
+          Guardar cambios
+        </button>
+      )}
+    </div>
   );
 }

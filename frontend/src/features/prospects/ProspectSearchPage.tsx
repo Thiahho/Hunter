@@ -64,6 +64,7 @@ function resolveCategoryFromText(text: string): ProspectCategory | null {
 }
 
 const MAX_LOCALITIES = 5;
+const RADIUS_OPTIONS_KM = [5, 10, 20, 50];
 
 const inputClass =
   'mt-1 w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-slate-900 dark:text-slate-100';
@@ -74,7 +75,6 @@ export function ProspectSearchPage() {
   const [categoryError, setCategoryError] = useState<string | null>(null);
   const [localityInput, setLocalityInput] = useState('');
   const [localities, setLocalities] = useState<string[]>([]);
-  const [useRadius, setUseRadius] = useState(false);
   const [radiusKm, setRadiusKm] = useState(10);
   const [maxResults, setMaxResults] = useState(50);
 
@@ -82,6 +82,7 @@ export function ProspectSearchPage() {
   const [batchId, setBatchId] = useState<number | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [lastResult, setLastResult] = useState<ImportConfirmResultDto | null>(null);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
 
   const searchMutation = useMutation({
     mutationFn: searchOpenStreetMap,
@@ -91,6 +92,19 @@ export function ProspectSearchPage() {
       setBatchId(result.batchId);
     },
   });
+
+  // Overpass (el servidor público de OSM) puede tardar bastante bajo carga (ver
+  // OpenStreetMapClient.PostWithRetryAsync — reintenta con backoff en 429/504), así que un
+  // simple "Buscando…" no alcanza para saber si sigue vivo. El contador de segundos es la señal
+  // más simple de "esto sigue corriendo, no se colgó".
+  useEffect(() => {
+    if (!searchMutation.isPending) {
+      setElapsedSeconds(0);
+      return;
+    }
+    const interval = setInterval(() => setElapsedSeconds((s) => s + 1), 1000);
+    return () => clearInterval(interval);
+  }, [searchMutation.isPending]);
 
   const recordsQuery = useQuery({
     queryKey: ['import-records', batchId],
@@ -184,7 +198,7 @@ export function ProspectSearchPage() {
     searchMutation.mutate({
       localities,
       categories: selectedCategories.length > 0 ? selectedCategories : undefined,
-      radiusKm: useRadius ? radiusKm : undefined,
+      radiusKm,
       maxResults,
     });
   }
@@ -313,26 +327,19 @@ export function ProspectSearchPage() {
 
         <div className="flex flex-wrap items-end gap-4">
           <div>
-            <label className="flex items-center gap-1.5 text-sm font-medium text-slate-700 dark:text-slate-300">
-              <input
-                type="checkbox"
-                checked={useRadius}
-                onChange={(e) => setUseRadius(e.target.checked)}
-                className="rounded border-slate-300 dark:border-slate-700"
-              />
-              Buscar por radio
-            </label>
-            {useRadius && (
-              <input
-                type="number"
-                min={1}
-                max={50}
-                value={radiusKm}
-                onChange={(e) => setRadiusKm(Number(e.target.value))}
-                className={`${inputClass} w-28`}
-              />
-            )}
-            {useRadius && <p className="mt-1 text-xs text-slate-400">km alrededor de cada localidad</p>}
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Radio de búsqueda</label>
+            <select
+              value={radiusKm}
+              onChange={(e) => setRadiusKm(Number(e.target.value))}
+              className={`${inputClass} w-32`}
+            >
+              {RADIUS_OPTIONS_KM.map((km) => (
+                <option key={km} value={km}>
+                  {km} km
+                </option>
+              ))}
+            </select>
+            <p className="mt-1 text-xs text-slate-400">Alrededor de cada localidad.</p>
           </div>
 
           <div>
@@ -354,13 +361,21 @@ export function ProspectSearchPage() {
           </p>
         )}
 
-        <button
-          type="submit"
-          disabled={searchMutation.isPending || localities.length === 0}
-          className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-60"
-        >
-          {searchMutation.isPending ? 'Buscando…' : 'Buscar'}
-        </button>
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            type="submit"
+            disabled={searchMutation.isPending || localities.length === 0}
+            className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-60"
+          >
+            {searchMutation.isPending ? `Buscando… (${elapsedSeconds}s)` : 'Buscar'}
+          </button>
+          {searchMutation.isPending && (
+            <p className="text-xs text-slate-400">
+              Puede tardar hasta 1 minuto según la carga del servidor público de OpenStreetMap. Sigue en curso, no
+              cierres esta pestaña.
+            </p>
+          )}
+        </div>
       </form>
 
       {recordsQuery.isLoading && <p className="text-sm text-slate-500 dark:text-slate-400">Cargando resultados...</p>}

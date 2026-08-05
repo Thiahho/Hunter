@@ -145,7 +145,7 @@ function EditProspectForm({ prospect, onCancel, onSaved }: EditProspectFormProps
         />
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <div>
           <label className={labelClass}>Ciudad</label>
           <input
@@ -166,7 +166,7 @@ function EditProspectForm({ prospect, onCancel, onSaved }: EditProspectFormProps
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <div>
           <label className={labelClass}>País</label>
           <input
@@ -197,7 +197,7 @@ function EditProspectForm({ prospect, onCancel, onSaved }: EditProspectFormProps
         />
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <div>
           <label className={labelClass}>Categoría</label>
           <select
@@ -228,7 +228,7 @@ function EditProspectForm({ prospect, onCancel, onSaved }: EditProspectFormProps
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <div>
           <label className={labelClass}>Potencial de recurrencia</label>
           <select

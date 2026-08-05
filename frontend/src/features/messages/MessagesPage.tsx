@@ -2,12 +2,15 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router';
 import {
+  bulkDeleteMessageResponses,
   bulkDeleteMessages,
   deleteMessage,
+  deleteMessageResponse,
   searchMessageResponses,
   searchMessages,
   type IntentClassification,
   type MessageDto,
+  type MessageResponseDto,
   type MessageStatus,
 } from '../../api/messages';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
@@ -281,9 +284,16 @@ function SentMessagesTab() {
   );
 }
 
+type PendingResponseDeletion =
+  | { kind: 'single'; response: MessageResponseDto }
+  | { kind: 'bulk'; responses: MessageResponseDto[] };
+
 function ResponsesTab() {
+  const queryClient = useQueryClient();
   const [classification, setClassification] = useState<IntentClassification | ''>('');
   const [page, setPage] = useState(1);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [pendingDeletion, setPendingDeletion] = useState<PendingResponseDeletion | null>(null);
 
   const query = useQuery({
     queryKey: ['message-responses', { classification, page }],
@@ -291,13 +301,54 @@ function ResponsesTab() {
     placeholderData: (previous) => previous,
   });
 
+  function changePage(next: number) {
+    setPage(next);
+    setSelectedIds(new Set());
+  }
+
+  const deleteMutation = useMutation({
+    mutationFn: async (target: PendingResponseDeletion) => {
+      if (target.kind === 'single') {
+        await deleteMessageResponse(target.response.id);
+      } else {
+        await bulkDeleteMessageResponses(target.responses.map((r) => r.id));
+      }
+    },
+    onSuccess: () => {
+      setSelectedIds(new Set());
+      setPendingDeletion(null);
+      queryClient.invalidateQueries({ queryKey: ['message-responses'] });
+    },
+  });
+
+  function toggleSelected(id: number) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleSelectAllOnPage() {
+    if (!query.data) return;
+    setSelectedIds((prev) => {
+      const allSelected = query.data.items.length > 0 && query.data.items.every((r) => prev.has(r.id));
+      return allSelected ? new Set() : new Set(query.data.items.map((r) => r.id));
+    });
+  }
+
+  const allOnPageSelected =
+    !!query.data && query.data.items.length > 0 && query.data.items.every((r) => selectedIds.has(r.id));
+  const selectedResponses = query.data?.items.filter((r) => selectedIds.has(r.id)) ?? [];
+
   return (
     <div className="space-y-3">
       <select
         value={classification}
         onChange={(e) => {
           setClassification(e.target.value as IntentClassification | '');
-          setPage(1);
+          changePage(1);
         }}
         className={selectClass}
       >
@@ -318,20 +369,52 @@ function ResponsesTab() {
 
       {query.data && (
         <>
+          {selectedIds.size > 0 && (
+            <div className="flex items-center justify-between rounded-md border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-500/10 px-4 py-2 text-sm">
+              <span className="text-indigo-700 dark:text-indigo-300">{selectedIds.size} seleccionado(s)</span>
+              <button
+                type="button"
+                onClick={() => setPendingDeletion({ kind: 'bulk', responses: selectedResponses })}
+                className="rounded-md bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-500"
+              >
+                Borrar seleccionados
+              </button>
+            </div>
+          )}
+
           <div className="overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-800">
             <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-800 text-sm">
               <thead className="bg-slate-50 dark:bg-slate-900">
                 <tr>
+                  <th className="px-4 py-2 text-left">
+                    <input
+                      type="checkbox"
+                      checked={allOnPageSelected}
+                      onChange={toggleSelectAllOnPage}
+                      aria-label="Seleccionar todos los de esta página"
+                      className="rounded border-slate-300 dark:border-slate-700"
+                    />
+                  </th>
                   <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">Prospecto</th>
                   <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">Respuesta</th>
                   <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">Clasificación</th>
                   <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">Origen</th>
                   <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">Recibido</th>
+                  <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">Acciones</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800 bg-white dark:bg-slate-950">
                 {query.data.items.map((r) => (
                   <tr key={r.id} className="hover:bg-slate-50 dark:hover:bg-slate-900">
+                    <td className="px-4 py-2">
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.has(r.id)}
+                        onChange={() => toggleSelected(r.id)}
+                        aria-label={`Seleccionar respuesta de ${r.prospectBusinessName}`}
+                        className="rounded border-slate-300 dark:border-slate-700"
+                      />
+                    </td>
                     <td className="px-4 py-2">
                       <Link
                         to={`/app/prospects/${r.prospectId}`}
@@ -354,11 +437,21 @@ function ResponsesTab() {
                     <td className="px-4 py-2 text-slate-600 dark:text-slate-300">
                       {new Date(r.receivedAt).toLocaleString('es-AR')}
                     </td>
+                    <td className="px-4 py-2">
+                      <button
+                        type="button"
+                        onClick={() => setPendingDeletion({ kind: 'single', response: r })}
+                        disabled={deleteMutation.isPending}
+                        className="text-xs font-medium text-red-600 dark:text-red-400 hover:underline disabled:opacity-60"
+                      >
+                        Borrar
+                      </button>
+                    </td>
                   </tr>
                 ))}
                 {query.data.items.length === 0 && (
                   <tr>
-                    <td colSpan={5} className="px-4 py-6 text-center text-slate-400">
+                    <td colSpan={7} className="px-4 py-6 text-center text-slate-400">
                       Sin respuestas todavía.
                     </td>
                   </tr>
@@ -366,8 +459,24 @@ function ResponsesTab() {
               </tbody>
             </table>
           </div>
-          <Pager page={query.data.page} totalPages={query.data.totalPages} onChange={setPage} />
+          <Pager page={query.data.page} totalPages={query.data.totalPages} onChange={changePage} />
         </>
+      )}
+
+      {pendingDeletion && (
+        <ConfirmDialog
+          title={pendingDeletion.kind === 'single' ? 'Borrar respuesta' : 'Borrar respuestas seleccionadas'}
+          message={
+            pendingDeletion.kind === 'single'
+              ? `¿Borrar la respuesta de "${pendingDeletion.response.prospectBusinessName}"? Esta acción no se puede deshacer.`
+              : `¿Borrar ${pendingDeletion.responses.length} respuesta(s) seleccionada(s)? Esta acción no se puede deshacer.`
+          }
+          confirmLabel="Borrar"
+          danger
+          isPending={deleteMutation.isPending}
+          onConfirm={() => deleteMutation.mutate(pendingDeletion)}
+          onCancel={() => setPendingDeletion(null)}
+        />
       )}
     </div>
   );

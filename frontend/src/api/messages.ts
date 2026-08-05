@@ -84,3 +84,18 @@ export async function bulkDeleteMessages(ids: number[]): Promise<number> {
   }
   return response.data.data;
 }
+
+export async function deleteMessageResponse(id: number): Promise<void> {
+  const response = await apiClient.delete<ApiResponse<boolean>>(`/messages/responses/${id}`);
+  if (!response.data.success) {
+    throw new Error(response.data.message ?? 'No se pudo borrar la respuesta.');
+  }
+}
+
+export async function bulkDeleteMessageResponses(ids: number[]): Promise<number> {
+  const response = await apiClient.post<ApiResponse<number>>('/messages/responses/bulk-delete', { ids });
+  if (!response.data.success || response.data.data === null) {
+    throw new Error(response.data.message ?? 'No se pudieron borrar las respuestas.');
+  }
+  return response.data.data;
+}
