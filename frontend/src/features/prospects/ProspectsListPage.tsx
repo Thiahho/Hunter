@@ -2,9 +2,13 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router';
 import { deleteProspect, searchProspects, type ProspectCategory, type ProspectListItem, type ProspectStatus } from '../../api/prospects';
+import { ConfirmDialog } from '../../components/ConfirmDialog';
 
 function buildMapsLink(prospect: ProspectListItem): string | null {
-  if (prospect.latitude !== null && prospect.longitude !== null) {
+  // typeof en vez de "!== null": si el backend todavía no manda estos campos (build vieja,
+  // etc.) llegan como undefined, no como null, y "undefined !== null" da true igual — eso
+  // generaba el link roto a "maps?query=undefined,undefined".
+  if (typeof prospect.latitude === 'number' && typeof prospect.longitude === 'number') {
     return `https://www.google.com/maps/search/?api=1&query=${prospect.latitude},${prospect.longitude}`;
   }
 
@@ -66,12 +70,16 @@ const statusLabels: Record<ProspectStatus, string> = {
 
 const PAGE_SIZE = 20;
 
+type PendingDeletion = { kind: 'single'; prospect: ProspectListItem } | { kind: 'bulk'; ids: number[] };
+
 export function ProspectsListPage() {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState<ProspectCategory | ''>('');
   const [status, setStatus] = useState<ProspectStatus | ''>('');
   const [page, setPage] = useState(1);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [pendingDeletion, setPendingDeletion] = useState<PendingDeletion | null>(null);
 
   const { data, isLoading, isError, error } = useQuery({
     queryKey: ['prospects', { search, category, status, page }],
@@ -86,16 +94,44 @@ export function ProspectsListPage() {
     placeholderData: (previous) => previous,
   });
 
+  function changePage(next: number) {
+    setPage(next);
+    setSelectedIds(new Set());
+  }
+
   const deleteMutation = useMutation({
-    mutationFn: deleteProspect,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['prospects'] }),
+    mutationFn: async (target: PendingDeletion) => {
+      if (target.kind === 'single') {
+        await deleteProspect(target.prospect.id);
+      } else {
+        await Promise.all(target.ids.map((id) => deleteProspect(id)));
+      }
+    },
+    onSuccess: () => {
+      setSelectedIds(new Set());
+      setPendingDeletion(null);
+      queryClient.invalidateQueries({ queryKey: ['prospects'] });
+    },
   });
 
-  function handleDelete(prospect: ProspectListItem) {
-    if (window.confirm(`¿Borrar "${prospect.businessName}"? Esta acción no se puede deshacer.`)) {
-      deleteMutation.mutate(prospect.id);
-    }
+  function toggleSelected(id: number) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   }
+
+  function toggleSelectAllOnPage() {
+    if (!data) return;
+    setSelectedIds((prev) => {
+      const allSelected = data.items.length > 0 && data.items.every((p) => prev.has(p.id));
+      return allSelected ? new Set() : new Set(data.items.map((p) => p.id));
+    });
+  }
+
+  const allOnPageSelected = !!data && data.items.length > 0 && data.items.every((p) => selectedIds.has(p.id));
 
   return (
     <div className="space-y-4">
@@ -116,7 +152,7 @@ export function ProspectsListPage() {
           value={search}
           onChange={(e) => {
             setSearch(e.target.value);
-            setPage(1);
+            changePage(1);
           }}
           className="rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-1.5 text-sm text-slate-900 dark:text-slate-100"
         />
@@ -124,7 +160,7 @@ export function ProspectsListPage() {
           value={category}
           onChange={(e) => {
             setCategory(e.target.value as ProspectCategory | '');
-            setPage(1);
+            changePage(1);
           }}
           className="rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-1.5 text-sm text-slate-900 dark:text-slate-100"
         >
@@ -139,7 +175,7 @@ export function ProspectsListPage() {
           value={status}
           onChange={(e) => {
             setStatus(e.target.value as ProspectStatus | '');
-            setPage(1);
+            changePage(1);
           }}
           className="rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-1.5 text-sm text-slate-900 dark:text-slate-100"
         >
@@ -162,10 +198,32 @@ export function ProspectsListPage() {
 
       {data && (
         <>
+          {selectedIds.size > 0 && (
+            <div className="flex items-center justify-between rounded-md border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-500/10 px-4 py-2 text-sm">
+              <span className="text-indigo-700 dark:text-indigo-300">{selectedIds.size} seleccionado(s)</span>
+              <button
+                type="button"
+                onClick={() => setPendingDeletion({ kind: 'bulk', ids: [...selectedIds] })}
+                className="rounded-md bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-500"
+              >
+                Borrar seleccionados
+              </button>
+            </div>
+          )}
+
           <div className="overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-800">
             <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-800 text-sm">
               <thead className="bg-slate-50 dark:bg-slate-900">
                 <tr>
+                  <th className="px-4 py-2 text-left">
+                    <input
+                      type="checkbox"
+                      checked={allOnPageSelected}
+                      onChange={toggleSelectAllOnPage}
+                      aria-label="Seleccionar todos los de esta página"
+                      className="rounded border-slate-300 dark:border-slate-700"
+                    />
+                  </th>
                   <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">Negocio</th>
                   <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">Categoría</th>
                   <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">Ciudad</th>
@@ -180,6 +238,15 @@ export function ProspectsListPage() {
                   const mapsLink = buildMapsLink(p);
                   return (
                   <tr key={p.id} className="hover:bg-slate-50 dark:hover:bg-slate-900">
+                    <td className="px-4 py-2">
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.has(p.id)}
+                        onChange={() => toggleSelected(p.id)}
+                        aria-label={`Seleccionar ${p.businessName}`}
+                        className="rounded border-slate-300 dark:border-slate-700"
+                      />
+                    </td>
                     <td className="px-4 py-2">
                       <Link
                         to={`/app/prospects/${p.id}`}
@@ -216,7 +283,7 @@ export function ProspectsListPage() {
                         </Link>
                         <button
                           type="button"
-                          onClick={() => handleDelete(p)}
+                          onClick={() => setPendingDeletion({ kind: 'single', prospect: p })}
                           disabled={deleteMutation.isPending}
                           className="text-xs font-medium text-red-600 dark:text-red-400 hover:underline disabled:opacity-60"
                         >
@@ -229,7 +296,7 @@ export function ProspectsListPage() {
                 })}
                 {data.items.length === 0 && (
                   <tr>
-                    <td colSpan={7} className="px-4 py-6 text-center text-slate-400">
+                    <td colSpan={8} className="px-4 py-6 text-center text-slate-400">
                       No se encontraron prospectos.
                     </td>
                   </tr>
@@ -244,14 +311,14 @@ export function ProspectsListPage() {
             </span>
             <div className="flex gap-2">
               <button
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                onClick={() => changePage(Math.max(1, page - 1))}
                 disabled={data.page <= 1}
                 className="rounded-md border border-slate-300 dark:border-slate-700 px-3 py-1 disabled:opacity-40"
               >
                 Anterior
               </button>
               <button
-                onClick={() => setPage((p) => p + 1)}
+                onClick={() => changePage(page + 1)}
                 disabled={data.page >= data.totalPages}
                 className="rounded-md border border-slate-300 dark:border-slate-700 px-3 py-1 disabled:opacity-40"
               >
@@ -260,6 +327,22 @@ export function ProspectsListPage() {
             </div>
           </div>
         </>
+      )}
+
+      {pendingDeletion && (
+        <ConfirmDialog
+          title={pendingDeletion.kind === 'single' ? 'Borrar prospecto' : 'Borrar prospectos seleccionados'}
+          message={
+            pendingDeletion.kind === 'single'
+              ? `¿Borrar "${pendingDeletion.prospect.businessName}"? Esta acción no se puede deshacer.`
+              : `¿Borrar ${pendingDeletion.ids.length} prospecto(s) seleccionado(s)? Esta acción no se puede deshacer.`
+          }
+          confirmLabel="Borrar"
+          danger
+          isPending={deleteMutation.isPending}
+          onConfirm={() => deleteMutation.mutate(pendingDeletion)}
+          onCancel={() => setPendingDeletion(null)}
+        />
       )}
     </div>
   );
