@@ -23,7 +23,7 @@ public class LeadHandoffMessageBuilderTests
         Assert.Contains("📍 Moreno", text);
         Assert.Contains("🏷 Casa de repuestos", text);
         Assert.Contains("📊 Score: 92", text);
-        Assert.Contains("📱 5491112345678", text);
+        Assert.Contains("📱 https://wa.me/5491112345678", text);
         Assert.Contains("¿Me pasás catálogo?", text);
     }
 
@@ -78,6 +78,26 @@ public class LeadHandoffMessageBuilderTests
         var text = LeadHandoffMessageBuilder.BuildFreeText(FullProspect(), "hola", "5491112345678", "Juan");
 
         Assert.Contains("Hola Repuestos Oeste!", text);
+    }
+
+    [Fact]
+    public void BuildFreeText_NoAssigneeFirstName_WhatsAppLinkHasNoPrefilledText()
+    {
+        var text = LeadHandoffMessageBuilder.BuildFreeText(FullProspect(), "hola", "5491112345678");
+
+        Assert.Contains("📱 https://wa.me/5491112345678", text);
+        Assert.DoesNotContain("?text=", text);
+    }
+
+    [Fact]
+    public void BuildFreeText_WithAssigneeFirstName_WhatsAppLinkHasUrlEncodedPrefilledText()
+    {
+        var text = LeadHandoffMessageBuilder.BuildFreeText(FullProspect(), "hola", "5491112345678", "Juan");
+
+        // wa.me/<numero>?text=<sugerencia url-encoded>, para que un clic abra el chat correcto
+        // con la respuesta ya cargada en el textbox, lista para revisar y mandar.
+        var expectedText = Uri.EscapeDataString("Hola Repuestos Oeste! ¿Cómo estás? Mi nombre es Juan, un gusto saludarte.");
+        Assert.Contains($"📱 https://wa.me/5491112345678?text={expectedText}", text);
     }
 
     [Fact]

@@ -46,22 +46,40 @@ public static class LeadHandoffMessageBuilder
         if (prospect.CommercialScore is not null)
             sb.AppendLine($"📊 Score: {prospect.CommercialScore}");
 
-        sb.AppendLine($"📱 {prospectWhatsApp}");
+        // Con sugerencia de respuesta armada, el link de wa.me la lleva pre-cargada en el
+        // textbox del chat (parámetro ?text=): un clic abre WhatsApp con el prospecto correcto
+        // y el mensaje listo para revisar y mandar. Sin sugerencia (no hay assigneeFirstName),
+        // el link igual sirve para abrir el chat, solo que sin nada pre-cargado.
+        var suggestedReply = string.IsNullOrWhiteSpace(assigneeFirstName) ? null : BuildSuggestedReply(prospect, assigneeFirstName);
+        sb.AppendLine($"📱 {BuildWhatsAppLink(prospectWhatsApp, suggestedReply)}");
 
         sb.AppendLine();
         sb.AppendLine("Mensaje:");
         sb.AppendLine($"\"{Truncate(prospectMessage)}\"");
 
-        if (string.IsNullOrWhiteSpace(assigneeFirstName))
+        if (suggestedReply is null)
             return sb.ToString().TrimEnd();
 
-        var greetingName = string.IsNullOrWhiteSpace(prospect.ContactName) ? prospect.BusinessName : prospect.ContactName;
         sb.AppendLine();
         sb.AppendLine("💬 Sugerencia de respuesta:");
-        sb.Append($"\"Hola {greetingName}! ¿Cómo estás? Mi nombre es {assigneeFirstName}, un gusto saludarte.\"");
+        sb.Append($"\"{suggestedReply}\"");
 
         return sb.ToString();
     }
+
+    private static string BuildSuggestedReply(Prospect prospect, string assigneeFirstName)
+    {
+        var greetingName = string.IsNullOrWhiteSpace(prospect.ContactName) ? prospect.BusinessName : prospect.ContactName;
+        return $"Hola {greetingName}! ¿Cómo estás? Mi nombre es {assigneeFirstName}, un gusto saludarte.";
+    }
+
+    // https://wa.me/<número sin "+" ni espacios>?text=<mensaje pre-cargado, url-encoded>. Meta
+    // no exige "+", el normalizador de contactos ya deja solo dígitos, así que alcanza con
+    // interpolar directo.
+    private static string BuildWhatsAppLink(string phone, string? prefilledText) =>
+        prefilledText is null
+            ? $"https://wa.me/{phone}"
+            : $"https://wa.me/{phone}?text={Uri.EscapeDataString(prefilledText)}";
 
     // Parámetros para la plantilla nuevo_lead (5 params: empresa, ciudad, rubro, score, mensaje).
     public static IReadOnlyList<string> BuildTemplateParameters(Prospect prospect, string prospectMessage) =>
