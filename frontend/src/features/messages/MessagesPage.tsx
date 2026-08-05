@@ -1,12 +1,27 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router';
 import {
+  bulkDeleteMessages,
+  deleteMessage,
   searchMessageResponses,
   searchMessages,
   type IntentClassification,
+  type MessageDto,
   type MessageStatus,
 } from '../../api/messages';
+import { ConfirmDialog } from '../../components/ConfirmDialog';
+
+function formatCost(cost: number | null, currency: string | null): string {
+  if (cost === null) return `0 ${currency ?? 'ARS'}`;
+  return `${cost.toLocaleString('es-AR', { minimumFractionDigits: 2 })} ${currency ?? 'ARS'}`;
+}
+
+function sumCost(messages: MessageDto[]): { total: number; currency: string | null } {
+  const currency = messages.find((m) => m.currency)?.currency ?? null;
+  const total = messages.reduce((acc, m) => acc + (m.cost ?? 0), 0);
+  return { total, currency };
+}
 
 const PAGE_SIZE = 30;
 
@@ -66,9 +81,14 @@ function Pager({ page, totalPages, onChange }: { page: number; totalPages: numbe
   );
 }
 
+type PendingMessageDeletion = { kind: 'single'; message: MessageDto } | { kind: 'bulk'; messages: MessageDto[] };
+
 function SentMessagesTab() {
+  const queryClient = useQueryClient();
   const [status, setStatus] = useState<MessageStatus | ''>('');
   const [page, setPage] = useState(1);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [pendingDeletion, setPendingDeletion] = useState<PendingMessageDeletion | null>(null);
 
   const query = useQuery({
     queryKey: ['messages', { status, page }],
@@ -76,13 +96,54 @@ function SentMessagesTab() {
     placeholderData: (previous) => previous,
   });
 
+  function changePage(next: number) {
+    setPage(next);
+    setSelectedIds(new Set());
+  }
+
+  const deleteMutation = useMutation({
+    mutationFn: async (target: PendingMessageDeletion) => {
+      if (target.kind === 'single') {
+        await deleteMessage(target.message.id);
+      } else {
+        await bulkDeleteMessages(target.messages.map((m) => m.id));
+      }
+    },
+    onSuccess: () => {
+      setSelectedIds(new Set());
+      setPendingDeletion(null);
+      queryClient.invalidateQueries({ queryKey: ['messages'] });
+    },
+  });
+
+  function toggleSelected(id: number) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleSelectAllOnPage() {
+    if (!query.data) return;
+    setSelectedIds((prev) => {
+      const allSelected = query.data.items.length > 0 && query.data.items.every((m) => prev.has(m.id));
+      return allSelected ? new Set() : new Set(query.data.items.map((m) => m.id));
+    });
+  }
+
+  const allOnPageSelected =
+    !!query.data && query.data.items.length > 0 && query.data.items.every((m) => selectedIds.has(m.id));
+  const selectedMessages = query.data?.items.filter((m) => selectedIds.has(m.id)) ?? [];
+
   return (
     <div className="space-y-3">
       <select
         value={status}
         onChange={(e) => {
           setStatus(e.target.value as MessageStatus | '');
-          setPage(1);
+          changePage(1);
         }}
         className={selectClass}
       >
@@ -103,20 +164,52 @@ function SentMessagesTab() {
 
       {query.data && (
         <>
+          {selectedIds.size > 0 && (
+            <div className="flex items-center justify-between rounded-md border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-500/10 px-4 py-2 text-sm">
+              <span className="text-indigo-700 dark:text-indigo-300">{selectedIds.size} seleccionado(s)</span>
+              <button
+                type="button"
+                onClick={() => setPendingDeletion({ kind: 'bulk', messages: selectedMessages })}
+                className="rounded-md bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-500"
+              >
+                Borrar seleccionados
+              </button>
+            </div>
+          )}
+
           <div className="overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-800">
             <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-800 text-sm">
               <thead className="bg-slate-50 dark:bg-slate-900">
                 <tr>
+                  <th className="px-4 py-2 text-left">
+                    <input
+                      type="checkbox"
+                      checked={allOnPageSelected}
+                      onChange={toggleSelectAllOnPage}
+                      aria-label="Seleccionar todos los de esta página"
+                      className="rounded border-slate-300 dark:border-slate-700"
+                    />
+                  </th>
                   <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">Destinatario</th>
                   <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">Canal</th>
                   <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">Mensaje</th>
                   <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">Estado</th>
                   <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">Enviado</th>
+                  <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">Acciones</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800 bg-white dark:bg-slate-950">
                 {query.data.items.map((m) => (
                   <tr key={m.id} className="hover:bg-slate-50 dark:hover:bg-slate-900">
+                    <td className="px-4 py-2">
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.has(m.id)}
+                        onChange={() => toggleSelected(m.id)}
+                        aria-label={`Seleccionar mensaje a ${m.prospectBusinessName}`}
+                        className="rounded border-slate-300 dark:border-slate-700"
+                      />
+                    </td>
                     <td className="px-4 py-2">
                       <Link
                         to={`/app/prospects/${m.prospectId}`}
@@ -140,11 +233,21 @@ function SentMessagesTab() {
                     <td className="px-4 py-2 text-slate-600 dark:text-slate-300">
                       {m.sentAt ? new Date(m.sentAt).toLocaleString('es-AR') : '—'}
                     </td>
+                    <td className="px-4 py-2">
+                      <button
+                        type="button"
+                        onClick={() => setPendingDeletion({ kind: 'single', message: m })}
+                        disabled={deleteMutation.isPending}
+                        className="text-xs font-medium text-red-600 dark:text-red-400 hover:underline disabled:opacity-60"
+                      >
+                        Borrar
+                      </button>
+                    </td>
                   </tr>
                 ))}
                 {query.data.items.length === 0 && (
                   <tr>
-                    <td colSpan={5} className="px-4 py-6 text-center text-slate-400">
+                    <td colSpan={7} className="px-4 py-6 text-center text-slate-400">
                       Sin mensajes.
                     </td>
                   </tr>
@@ -152,8 +255,27 @@ function SentMessagesTab() {
               </tbody>
             </table>
           </div>
-          <Pager page={query.data.page} totalPages={query.data.totalPages} onChange={setPage} />
+          <Pager page={query.data.page} totalPages={query.data.totalPages} onChange={changePage} />
         </>
+      )}
+
+      {pendingDeletion && (
+        <ConfirmDialog
+          title={pendingDeletion.kind === 'single' ? 'Borrar mensaje' : 'Borrar mensajes seleccionados'}
+          message={(() => {
+            if (pendingDeletion.kind === 'single') {
+              const { total, currency } = sumCost([pendingDeletion.message]);
+              return `¿Borrar el mensaje a "${pendingDeletion.message.prospectBusinessName}"? Costo: ${formatCost(total, currency)}. Esta acción no se puede deshacer (no afecta el historial de Costos, que es independiente).`;
+            }
+            const { total, currency } = sumCost(pendingDeletion.messages);
+            return `¿Borrar ${pendingDeletion.messages.length} mensaje(s) seleccionado(s)? Costo total: ${formatCost(total, currency)}. Esta acción no se puede deshacer (no afecta el historial de Costos, que es independiente).`;
+          })()}
+          confirmLabel="Borrar"
+          danger
+          isPending={deleteMutation.isPending}
+          onConfirm={() => deleteMutation.mutate(pendingDeletion)}
+          onCancel={() => setPendingDeletion(null)}
+        />
       )}
     </div>
   );

@@ -16,4 +16,6 @@ public record MessageDto(
     DateTimeOffset? ReadAt,
     DateTimeOffset? FailedAt,
     string? FailureReason,
+    decimal? Cost,
+    string? Currency,
     DateTimeOffset CreatedAt);

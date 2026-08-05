@@ -10,13 +10,13 @@ namespace Hunter.Tests.Integration;
 // "Prospecto duplicado NO genera nuevo registro."
 public class ProspectDeduplicationTests
 {
-    private static CreateProspectRequest BuildRequest(string businessName, string whatsapp) => new(
+    private static CreateProspectRequest BuildRequest(string businessName, string whatsapp, string? city = null) => new(
         businessName,
         null,
         ProspectCategory.Workshop,
         BusinessSize.Small,
         RecurrencePotential.Medium,
-        null, null, null, null, null, null,
+        null, city, null, null, null, null,
         [new ContactInput(ProspectContactChannel.Whatsapp, whatsapp, true)],
         ProspectSourceType.Manual);
 
@@ -45,6 +45,64 @@ public class ProspectDeduplicationTests
 
         Assert.False(second.Succeeded);
         Assert.Contains(first.Value!.Id.ToString(), second.Error);
+    }
+
+    [Fact]
+    public async Task Creating_Prospect_With_Same_Name_And_City_But_Different_Contact_Is_Rejected()
+    {
+        var dbName = TestDb.NewDbName();
+        int orgId;
+
+        await using (var seedDb = TestDb.Create(dbName))
+        {
+            var org = new Organization { Name = "Difrani" };
+            seedDb.Organizations.Add(org);
+            await seedDb.SaveChangesAsync();
+            orgId = org.Id;
+        }
+
+        await using var db = TestDb.Create(dbName, organizationId: orgId, userId: 1);
+        var finder = new ProspectDuplicateFinder(db);
+        var service = new ProspectService(db, new FakeCurrentUserService { OrganizationId = orgId, UserId = 1 }, finder);
+
+        // Mismo nombre + ciudad (con distinta capitalización/espacios), contacto completamente
+        // distinto: la búsqueda nueva trajo el teléfono actualizado, pero sigue siendo el mismo
+        // comercio y no tiene que duplicarse.
+        var first = await service.CreateAsync(BuildRequest("Gomería Neumen", "5491112345678", city: "Moreno"));
+        Assert.True(first.Succeeded);
+
+        var second = await service.CreateAsync(BuildRequest("  gomería neumen  ", "5491199998888", city: "MORENO"));
+
+        Assert.False(second.Succeeded);
+        Assert.Contains(first.Value!.Id.ToString(), second.Error);
+    }
+
+    [Fact]
+    public async Task Creating_Prospect_With_Same_Name_Different_City_Is_Allowed()
+    {
+        var dbName = TestDb.NewDbName();
+        int orgId;
+
+        await using (var seedDb = TestDb.Create(dbName))
+        {
+            var org = new Organization { Name = "Difrani" };
+            seedDb.Organizations.Add(org);
+            await seedDb.SaveChangesAsync();
+            orgId = org.Id;
+        }
+
+        await using var db = TestDb.Create(dbName, organizationId: orgId, userId: 1);
+        var finder = new ProspectDuplicateFinder(db);
+        var service = new ProspectService(db, new FakeCurrentUserService { OrganizationId = orgId, UserId = 1 }, finder);
+
+        // Mismo nombre, ciudad distinta y contacto distinto: podría ser una sucursal real de
+        // una cadena/franquicia, no un duplicado — no debe rechazarse solo por el nombre.
+        var first = await service.CreateAsync(BuildRequest("Bridgestone", "5491112345678", city: "Martínez"));
+        Assert.True(first.Succeeded);
+
+        var second = await service.CreateAsync(BuildRequest("Bridgestone", "5491199998888", city: "San Fernando"));
+
+        Assert.True(second.Succeeded);
     }
 
     [Fact]

@@ -22,7 +22,7 @@ public class ProspectService(IHunterDbContext db, ICurrentUserService currentUse
             .Select(c => new ContactInput(c.Channel, ContactValueNormalizer.Normalize(c.Channel, c.Value), c.IsPrimary))
             .ToList();
 
-        if (await duplicateFinder.FindDuplicateProspectIdAsync(organizationId, normalizedContacts, ct) is { } existingId)
+        if (await duplicateFinder.FindDuplicateProspectIdAsync(organizationId, normalizedContacts, request.BusinessName, request.City, ct) is { } existingId)
             return Result<ProspectDto>.Failure($"El prospecto ya existe (contacto duplicado). ProspectId: {existingId}");
 
         var prospect = new Prospect

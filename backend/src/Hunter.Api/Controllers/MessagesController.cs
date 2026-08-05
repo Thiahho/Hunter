@@ -40,4 +40,24 @@ public class MessagesController(IMessageQueryService messageQueryService, IMessa
         var result = await messageResponseQueryService.SearchAsync(campaignId, prospectId, classification, page, pageSize, ct);
         return Ok(ApiResponse<PagedResult<MessageResponseDto>>.Ok(result));
     }
+
+    [HttpDelete("{id:int}")]
+    public async Task<IActionResult> Delete(int id, CancellationToken ct)
+    {
+        var result = await messageQueryService.DeleteAsync(id, ct);
+        if (!result.Succeeded)
+            return BadRequest(ApiResponse<bool>.Fail(result.Error!));
+
+        return Ok(ApiResponse<bool>.Ok(true));
+    }
+
+    [HttpPost("bulk-delete")]
+    public async Task<IActionResult> BulkDelete(BulkDeleteMessagesRequest request, CancellationToken ct)
+    {
+        var result = await messageQueryService.DeleteManyAsync(request.Ids, ct);
+        if (!result.Succeeded)
+            return BadRequest(ApiResponse<int>.Fail(result.Error!));
+
+        return Ok(ApiResponse<int>.Ok(result.Value));
+    }
 }

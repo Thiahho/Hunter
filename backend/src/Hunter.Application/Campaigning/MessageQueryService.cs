@@ -31,9 +31,33 @@ public class MessageQueryService(IHunterDbContext db) : IMessageQueryService
             .Take(pageSize)
             .Select(m => new MessageDto(
                 m.Id, m.ProspectId, m.Prospect.BusinessName, m.CampaignId, m.Channel, m.Content, m.Status, m.ExternalMessageId,
-                m.SentAt, m.DeliveredAt, m.ReadAt, m.FailedAt, m.FailureReason, m.CreatedAt))
+                m.SentAt, m.DeliveredAt, m.ReadAt, m.FailedAt, m.FailureReason, m.Cost, m.Currency, m.CreatedAt))
             .ToListAsync(ct);
 
         return new PagedResult<MessageDto> { Items = items, Page = page, PageSize = pageSize, TotalItems = totalItems };
+    }
+
+    public async Task<Result<bool>> DeleteAsync(int id, CancellationToken ct = default)
+    {
+        var message = await db.Messages.FirstOrDefaultAsync(m => m.Id == id, ct);
+        if (message is null)
+            return Result<bool>.Failure("Mensaje no encontrado.");
+
+        db.Messages.Remove(message);
+        await db.SaveChangesAsync(ct);
+
+        return Result<bool>.Success(true);
+    }
+
+    public async Task<Result<int>> DeleteManyAsync(IReadOnlyCollection<int> ids, CancellationToken ct = default)
+    {
+        if (ids.Count == 0)
+            return Result<int>.Success(0);
+
+        var messages = await db.Messages.Where(m => ids.Contains(m.Id)).ToListAsync(ct);
+        db.Messages.RemoveRange(messages);
+        await db.SaveChangesAsync(ct);
+
+        return Result<int>.Success(messages.Count);
     }
 }

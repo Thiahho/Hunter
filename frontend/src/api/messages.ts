@@ -19,6 +19,8 @@ export interface MessageDto {
   readAt: string | null;
   failedAt: string | null;
   failureReason: string | null;
+  cost: number | null;
+  currency: string | null;
   createdAt: string;
 }
 
@@ -64,6 +66,21 @@ export async function searchMessageResponses(query: MessageResponseQuery): Promi
   const response = await apiClient.get<ApiResponse<PagedResult<MessageResponseDto>>>('/messages/responses', { params: query });
   if (!response.data.success || !response.data.data) {
     throw new Error(response.data.message ?? 'No se pudieron obtener las respuestas.');
+  }
+  return response.data.data;
+}
+
+export async function deleteMessage(id: number): Promise<void> {
+  const response = await apiClient.delete<ApiResponse<boolean>>(`/messages/${id}`);
+  if (!response.data.success) {
+    throw new Error(response.data.message ?? 'No se pudo borrar el mensaje.');
+  }
+}
+
+export async function bulkDeleteMessages(ids: number[]): Promise<number> {
+  const response = await apiClient.post<ApiResponse<number>>('/messages/bulk-delete', { ids });
+  if (!response.data.success || response.data.data === null) {
+    throw new Error(response.data.message ?? 'No se pudieron borrar los mensajes.');
   }
   return response.data.data;
 }

@@ -336,7 +336,7 @@ public class ImportService(
 
         contacts[0] = contacts[0] with { IsPrimary = true };
 
-        var duplicateId = await duplicateFinder.FindDuplicateProspectIdAsync(organizationId, contacts, ct);
+        var duplicateId = await duplicateFinder.FindDuplicateProspectIdAsync(organizationId, contacts, businessName, row.city, ct);
         if (duplicateId is not null)
         {
             return new ImportBatchRecord
