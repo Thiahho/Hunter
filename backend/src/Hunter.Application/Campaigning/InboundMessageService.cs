@@ -179,6 +179,9 @@ public class InboundMessageService(
         // un lead genuinamente nuevo, no en cada mensaje de seguimiento de un lead ya abierto.
         if (lead is not null && leadCreated)
             await NotifyAssigneeAsync(lead, prospect, request.Content, ct);
+        else if (lead is not null)
+            logger.LogInformation(
+                "[LeadHandoff] Lead {LeadId} reutilizado (ya estaba abierto), no se reenvía notificación de handoff.", lead.Id);
 
         return Result<InboundMessageResultDto>.Success(
             new InboundMessageResultDto(messageResponse.Id, classification.Classification, classification.Confidence, lead?.Id, suppressed));
@@ -317,13 +320,20 @@ public class InboundMessageService(
         try
         {
             if (lead.AssignedToUserId is null)
+            {
+                logger.LogWarning("[LeadHandoff] Lead {LeadId} no tiene AssignedToUserId, no hay a quién notificar.", lead.Id);
                 return;
+            }
 
             var assignee = await db.Users.IgnoreQueryFilters()
                 .FirstOrDefaultAsync(u => u.Id == lead.AssignedToUserId.Value, ct);
 
             if (assignee is null)
+            {
+                logger.LogWarning(
+                    "[LeadHandoff] Usuario {UserId} asignado al lead {LeadId} no existe en la base.", lead.AssignedToUserId, lead.Id);
                 return;
+            }
 
             var freeText = LeadHandoffMessageBuilder.BuildFreeText(prospect, prospectMessage);
 
@@ -369,6 +379,12 @@ public class InboundMessageService(
                 "[LeadHandoff] No se pudo notificar por WhatsApp al usuario {UserId} sobre el lead {LeadId}: {Error}",
                 lead.AssignedToUserId, lead.Id, sendResult.Error);
         }
+        else
+        {
+            logger.LogInformation(
+                "[LeadHandoff] Notificación por WhatsApp enviada a {Contact} (usuario {UserId}) sobre el lead {LeadId}.",
+                contact, lead.AssignedToUserId, lead.Id);
+        }
     }
 
     // A diferencia de WhatsApp, Telegram no tiene ventana de servicio de 24hs ni requiere
@@ -376,7 +392,12 @@ public class InboundMessageService(
     private async Task NotifyByTelegramAsync(Lead lead, string? assigneeTelegramChatId, string freeText, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(assigneeTelegramChatId))
+        {
+            logger.LogWarning(
+                "[LeadHandoff] Usuario {UserId} asignado al lead {LeadId} no tiene chat_id de Telegram cargado, no se pudo notificar por Telegram.",
+                lead.AssignedToUserId, lead.Id);
             return;
+        }
 
         var telegramResult = await telegramNotifier.SendAsync(assigneeTelegramChatId, freeText, ct);
 
@@ -385,6 +406,12 @@ public class InboundMessageService(
             logger.LogWarning(
                 "[LeadHandoff] No se pudo notificar por Telegram al usuario {UserId} sobre el lead {LeadId}: {Error}",
                 lead.AssignedToUserId, lead.Id, telegramResult.Error);
+        }
+        else
+        {
+            logger.LogInformation(
+                "[LeadHandoff] Notificación por Telegram enviada a chat_id {ChatId} (usuario {UserId}) sobre el lead {LeadId}.",
+                assigneeTelegramChatId, lead.AssignedToUserId, lead.Id);
         }
     }
 }
