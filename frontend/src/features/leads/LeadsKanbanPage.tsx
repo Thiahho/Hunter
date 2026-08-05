@@ -1,6 +1,6 @@
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router';
-import { searchLeads, type Lead, type LeadListItem, type LeadStatus } from '../../api/leads';
+import { markLeadLost, searchLeads, type Lead, type LeadListItem, type LeadStatus } from '../../api/leads';
 
 const columns: { status: LeadStatus; label: string }[] = [
   { status: 'New', label: 'Nuevo' },
@@ -16,16 +16,43 @@ const priorityColors: Record<Lead['priority'], string> = {
 };
 
 function LeadCard({ lead }: { lead: LeadListItem }) {
+  const queryClient = useQueryClient();
+
+  const closeMutation = useMutation({
+    mutationFn: () => markLeadLost(lead.id, { lostReason: 'Other', notes: 'Cerrado rápido desde el Kanban' }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['leads'] }),
+  });
+
+  const canClose = lead.status === 'New' || lead.status === 'InProgress';
+
   return (
-    <Link
-      to={`/app/leads/${lead.id}`}
-      className="block rounded-md border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3 hover:border-indigo-300 dark:hover:border-indigo-700"
-    >
-      <p className="text-sm font-medium text-slate-900 dark:text-slate-100">{lead.prospectBusinessName}</p>
-      <span className={`mt-1 inline-block rounded px-1.5 py-0.5 text-xs ${priorityColors[lead.priority]}`}>
-        {lead.priority}
-      </span>
-    </Link>
+    <div className="rounded-md border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3 hover:border-indigo-300 dark:hover:border-indigo-700">
+      <Link to={`/app/leads/${lead.id}`} className="block">
+        <p className="text-sm font-medium text-slate-900 dark:text-slate-100">{lead.prospectBusinessName}</p>
+        <span className={`mt-1 inline-block rounded px-1.5 py-0.5 text-xs ${priorityColors[lead.priority]}`}>
+          {lead.priority}
+        </span>
+      </Link>
+      {canClose && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.preventDefault();
+            closeMutation.mutate();
+          }}
+          disabled={closeMutation.isPending}
+          title="Marca el lead como perdido (motivo genérico), para liberar la notificación de handoff en el próximo mensaje del prospecto"
+          className="mt-2 w-full rounded-md border border-slate-200 dark:border-slate-700 px-2 py-1 text-xs font-medium text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-60"
+        >
+          {closeMutation.isPending ? 'Cerrando…' : 'Cerrar (rápido)'}
+        </button>
+      )}
+      {closeMutation.isError && (
+        <p className="mt-1 text-xs text-red-600 dark:text-red-400">
+          {closeMutation.error instanceof Error ? closeMutation.error.message : 'No se pudo cerrar.'}
+        </p>
+      )}
+    </div>
   );
 }
 
