@@ -33,7 +33,7 @@ export function Layout({ children }: { children: ReactNode }) {
     <div className="flex min-h-screen bg-slate-50 dark:bg-slate-950">
       <aside className="flex w-56 flex-col border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
         <div className="px-4 py-5">
-          <h1 className="text-base font-semibold text-slate-900 dark:text-slate-100">DIFRANI | DIFRANI | Hunter CRM AI</h1>
+          <h1 className="text-base font-semibold text-slate-900 dark:text-slate-100">DIFRANI | Hunter CRM AI</h1>
         </div>
 
         <nav className="flex-1 space-y-1 px-2">
