@@ -22,6 +22,37 @@ const categoryOptions: { value: ProspectCategory; label: string }[] = [
   { value: 'Reseller', label: 'Concesionaria / reventa' },
 ];
 
+// Sinónimos en español para cada categoría: el dominio (ProspectCategory) es un enum cerrado
+// con solo 5 rubros mapeables a OSM (OpenStreetMapCategories.Supported), así que la búsqueda
+// "escrita" no agrega rubros nuevos, solo resuelve distintas formas de nombrar los mismos 5.
+const categorySynonyms: { value: ProspectCategory; terms: string[] }[] = [
+  { value: 'AutoPartsStore', terms: ['repuestería', 'repuesteria', 'repuestos', 'autopartes', 'auto partes'] },
+  { value: 'Workshop', terms: ['taller', 'taller mecánico', 'taller mecanico', 'mecánica', 'mecanica'] },
+  { value: 'Lubricentro', terms: ['lubricentro', 'cambio de aceite', 'lubricantes'] },
+  { value: 'TireShop', terms: ['gomería', 'gomeria', 'neumáticos', 'neumaticos', 'cubiertas'] },
+  { value: 'Reseller', terms: ['concesionaria', 'concesionaria / reventa', 'reventa', 'agencia de autos'] },
+];
+
+const categoryLabelByValue = new Map(categoryOptions.map((o) => [o.value, o.label]));
+
+function resolveCategoryFromText(text: string): ProspectCategory | null {
+  const normalized = text
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '');
+  if (!normalized) return null;
+
+  for (const entry of categorySynonyms) {
+    const matches = entry.terms.some((term) => {
+      const normalizedTerm = term.normalize('NFD').replace(/\p{Diacritic}/gu, '');
+      return normalizedTerm === normalized || normalizedTerm.includes(normalized) || normalized.includes(normalizedTerm);
+    });
+    if (matches) return entry.value;
+  }
+  return null;
+}
+
 const MAX_LOCALITIES = 5;
 
 const inputClass =
@@ -29,6 +60,8 @@ const inputClass =
 
 export function ProspectSearchPage() {
   const [selectedCategories, setSelectedCategories] = useState<ProspectCategory[]>([]);
+  const [categoryInput, setCategoryInput] = useState('');
+  const [categoryError, setCategoryError] = useState<string | null>(null);
   const [localityInput, setLocalityInput] = useState('');
   const [localities, setLocalities] = useState<string[]>([]);
   const [useRadius, setUseRadius] = useState(false);
@@ -80,10 +113,30 @@ export function ProspectSearchPage() {
     setSelectedIds(new Set());
   }
 
-  function toggleCategory(category: ProspectCategory) {
-    setSelectedCategories((prev) =>
-      prev.includes(category) ? prev.filter((c) => c !== category) : [...prev, category],
-    );
+  function addCategory() {
+    const trimmed = categoryInput.trim();
+    if (!trimmed) return;
+
+    const resolved = resolveCategoryFromText(trimmed);
+    if (!resolved) {
+      setCategoryError(`No se reconoce el rubro "${trimmed}". Probá con: repuestería, taller, lubricentro, gomería o concesionaria.`);
+      return;
+    }
+
+    setCategoryError(null);
+    setSelectedCategories((prev) => (prev.includes(resolved) ? prev : [...prev, resolved]));
+    setCategoryInput('');
+  }
+
+  function handleCategoryKeyDown(event: KeyboardEvent<HTMLInputElement>) {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      addCategory();
+    }
+  }
+
+  function removeCategory(category: ProspectCategory) {
+    setSelectedCategories((prev) => prev.filter((c) => c !== category));
   }
 
   function addLocality() {
@@ -152,20 +205,54 @@ export function ProspectSearchPage() {
         className="space-y-4 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5"
       >
         <div>
-          <span className="block text-sm font-medium text-slate-700 dark:text-slate-300">Rubro</span>
-          <div className="mt-1 flex flex-wrap gap-3">
-            {categoryOptions.map((option) => (
-              <label key={option.value} className="flex items-center gap-1.5 text-sm text-slate-700 dark:text-slate-300">
-                <input
-                  type="checkbox"
-                  checked={selectedCategories.includes(option.value)}
-                  onChange={() => toggleCategory(option.value)}
-                  className="rounded border-slate-300 dark:border-slate-700"
-                />
-                {option.label}
-              </label>
-            ))}
+          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Rubro</label>
+          <div className="mt-1 flex gap-2">
+            <input
+              type="text"
+              value={categoryInput}
+              onChange={(e) => {
+                setCategoryInput(e.target.value);
+                if (categoryError) setCategoryError(null);
+              }}
+              onKeyDown={handleCategoryKeyDown}
+              list="category-suggestions"
+              placeholder="ej. gomería, taller, lubricentro"
+              className={inputClass}
+            />
+            <datalist id="category-suggestions">
+              {categoryOptions.map((option) => (
+                <option key={option.value} value={option.label} />
+              ))}
+            </datalist>
+            <button
+              type="button"
+              onClick={addCategory}
+              className="mt-1 shrink-0 rounded-md border border-slate-300 dark:border-slate-700 px-3 py-2 text-sm font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+            >
+              Agregar
+            </button>
           </div>
+          {categoryError && <p className="mt-1 text-xs text-red-600 dark:text-red-400">{categoryError}</p>}
+          {selectedCategories.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-2">
+              {selectedCategories.map((category) => (
+                <span
+                  key={category}
+                  className="flex items-center gap-1 rounded-full bg-indigo-50 dark:bg-indigo-500/10 px-3 py-1 text-xs font-medium text-indigo-700 dark:text-indigo-300"
+                >
+                  {categoryLabelByValue.get(category) ?? category}
+                  <button
+                    type="button"
+                    onClick={() => removeCategory(category)}
+                    className="text-indigo-500 hover:text-indigo-800 dark:hover:text-indigo-100"
+                    aria-label={`Quitar ${categoryLabelByValue.get(category) ?? category}`}
+                  >
+                    ×
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
           <p className="mt-1 text-xs text-slate-400">Sin selección = se buscan todos los rubros.</p>
         </div>
 
