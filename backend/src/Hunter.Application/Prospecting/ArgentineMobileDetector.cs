@@ -13,4 +13,11 @@ public static class ArgentineMobileDetector
     // Meta rechaza, así que ante la duda se prefiere no marcarlo.
     public static bool IsWhatsAppCapable(string normalizedPhone) =>
         normalizedPhone.Length == 13 && normalizedPhone.StartsWith("549", StringComparison.Ordinal);
+
+    // Mismo número sin el "9" móvil, tal como se lo suele escribir a mano (ContactValueNormalizer
+    // no lo inserta a propósito). Null si no aplica el patrón de celular argentino. Usado para
+    // reintentar el matching de un inbound real de Meta (que siempre trae el "9") contra un
+    // contacto guardado sin él, sin tocar cómo se normaliza/guarda en el resto del sistema.
+    public static string? WithoutMobilePrefix(string normalizedPhone) =>
+        IsWhatsAppCapable(normalizedPhone) ? "54" + normalizedPhone[3..] : null;
 }

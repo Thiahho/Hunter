@@ -125,6 +125,49 @@ public class InterestDetectionTests
         Assert.Equal(1, responseCount);
     }
 
+    // Regresión del bug real: un contacto cargado a mano sin el "9" móvil (ej. "541122692061")
+    // no matcheaba contra un inbound real de Meta, que siempre lo trae en "from"
+    // (ej. "5491122692061") — el prospecto "desaparecía" para el webhook aunque existiera.
+    [Fact]
+    public async Task Inbound_From_Number_With_Mobile9_Matches_Contact_Stored_Without_It()
+    {
+        var dbName = TestDb.NewDbName();
+        int orgId, prospectId;
+
+        await using (var seedDb = TestDb.Create(dbName))
+        {
+            var org = new Organization { Name = "Difrani" };
+            seedDb.Organizations.Add(org);
+            await seedDb.SaveChangesAsync();
+            orgId = org.Id;
+
+            var prospect = new Prospect { OrganizationId = orgId, BusinessName = "Repuestos Test" };
+            seedDb.Prospects.Add(prospect);
+            await seedDb.SaveChangesAsync();
+            prospectId = prospect.Id;
+
+            seedDb.ProspectContacts.Add(new ProspectContact
+            {
+                OrganizationId = orgId,
+                ProspectId = prospectId,
+                Channel = ProspectContactChannel.Whatsapp,
+                Value = "541122692061", // cargado a mano, sin el "9"
+                IsPrimary = true
+            });
+            await seedDb.SaveChangesAsync();
+        }
+
+        await using var db = TestDb.Create(dbName, organizationId: null);
+        var service = new InboundMessageService(db, new KeywordIntentClassifier(), new StubMessageProvider(NullLogger<StubMessageProvider>.Instance), new RecordingTelegramNotifier(), NullLogger<InboundMessageService>.Instance);
+
+        var request = new InboundMessageRequest(orgId, "5491122692061", "hola me interesa", ExternalInboundId: "wh-9-fallback");
+        var result = await service.ProcessAsync(request);
+
+        Assert.True(result.Succeeded);
+        Assert.Equal(IntentClassification.Interested, result.Value!.Classification);
+        Assert.NotNull(result.Value.LeadId);
+    }
+
     [Fact]
     public async Task Stop_Response_Creates_Suppression_And_Blocks_Prospect()
     {

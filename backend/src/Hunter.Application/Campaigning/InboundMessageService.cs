@@ -57,9 +57,7 @@ public class InboundMessageService(
 
         var normalizedContact = ContactValueNormalizer.Normalize(ProspectContactChannel.Whatsapp, request.Contact);
 
-        var prospectContact = await db.ProspectContacts.IgnoreQueryFilters()
-            .Where(c => c.OrganizationId == request.OrganizationId && c.Value == normalizedContact)
-            .FirstOrDefaultAsync(ct);
+        var prospectContact = await FindProspectContactAsync(request.OrganizationId, normalizedContact, ct);
 
         if (prospectContact is null)
             return Result<InboundMessageResultDto>.Failure("No se encontró un prospecto para ese contacto.");
@@ -184,6 +182,28 @@ public class InboundMessageService(
 
         return Result<InboundMessageResultDto>.Success(
             new InboundMessageResultDto(messageResponse.Id, classification.Classification, classification.Confidence, lead?.Id, suppressed));
+    }
+
+    // El inbound real de Meta siempre trae el "9" móvil argentino en "from" (ver
+    // ArgentineMobileDetector), pero ContactValueNormalizer no lo inserta al guardar un contacto
+    // cargado a mano o importado, así que un mismo número puede estar guardado con o sin él. Si
+    // el match exacto falla, se reintenta contra la variante sin el "9" antes de dar por perdido
+    // el prospecto, sin cambiar cómo se normaliza/guarda en el resto del sistema.
+    private async Task<ProspectContact?> FindProspectContactAsync(int organizationId, string normalizedContact, CancellationToken ct)
+    {
+        var contact = await db.ProspectContacts.IgnoreQueryFilters()
+            .Where(c => c.OrganizationId == organizationId && c.Value == normalizedContact)
+            .FirstOrDefaultAsync(ct);
+        if (contact is not null)
+            return contact;
+
+        var withoutMobilePrefix = ArgentineMobileDetector.WithoutMobilePrefix(normalizedContact);
+        if (withoutMobilePrefix is null)
+            return null;
+
+        return await db.ProspectContacts.IgnoreQueryFilters()
+            .Where(c => c.OrganizationId == organizationId && c.Value == withoutMobilePrefix)
+            .FirstOrDefaultAsync(ct);
     }
 
     private async Task<bool> CreateSuppressionIfNeededAsync(int organizationId, string normalizedContact, CancellationToken ct)

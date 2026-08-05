@@ -18,6 +18,14 @@ import {
   type TestMessageResult,
   type UpdateProspectRequest,
 } from '../../api/prospects';
+import {
+  searchMessageResponses,
+  searchMessages,
+  type IntentClassification,
+  type MessageDto,
+  type MessageResponseDto,
+  type MessageStatus,
+} from '../../api/messages';
 
 const DEFAULT_TEST_MESSAGE =
   'Hola {{business_name}}! Somos Hunter. Mirá nuestro catálogo acá: https://tu-tienda.com/catalogo';
@@ -458,6 +466,82 @@ function AddContactForm({ prospectId, hasContacts }: { prospectId: number; hasCo
   );
 }
 
+const conversationStatusLabels: Record<MessageStatus, string> = {
+  Pending: 'Pendiente',
+  Sent: 'Enviado',
+  Delivered: 'Entregado',
+  Read: 'Leído',
+  Failed: 'Falló',
+  Cancelled: 'Cancelado',
+};
+
+const conversationClassificationLabels: Record<IntentClassification, string> = {
+  Interested: 'Interesado',
+  NotInterested: 'No interesado',
+  Question: 'Pregunta',
+  Unclear: 'Sin clasificar',
+  Stop: 'Baja (STOP)',
+};
+
+type ConversationEntry =
+  | { kind: 'sent'; at: string; data: MessageDto }
+  | { kind: 'received'; at: string; data: MessageResponseDto };
+
+function ConversationSection({ prospectId }: { prospectId: number }) {
+  const messagesQuery = useQuery({
+    queryKey: ['messages', { prospectId }],
+    queryFn: () => searchMessages({ prospectId, pageSize: 100 }),
+  });
+  const responsesQuery = useQuery({
+    queryKey: ['message-responses', { prospectId }],
+    queryFn: () => searchMessageResponses({ prospectId, pageSize: 100 }),
+  });
+
+  if (messagesQuery.isLoading || responsesQuery.isLoading) {
+    return <p className="text-sm text-slate-500 dark:text-slate-400">Cargando conversación...</p>;
+  }
+
+  const entries: ConversationEntry[] = [
+    ...(messagesQuery.data?.items.map((m): ConversationEntry => ({ kind: 'sent', at: m.createdAt, data: m })) ?? []),
+    ...(responsesQuery.data?.items.map((r): ConversationEntry => ({ kind: 'received', at: r.receivedAt, data: r })) ?? []),
+  ].sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime());
+
+  if (entries.length === 0) {
+    return <p className="text-sm text-slate-400">Todavía no hay mensajes con este prospecto.</p>;
+  }
+
+  return (
+    <ul className="space-y-2">
+      {entries.map((entry) =>
+        entry.kind === 'sent' ? (
+          <li key={`sent-${entry.data.id}`} className="flex justify-end">
+            <div className="max-w-md rounded-lg rounded-br-none bg-indigo-600 px-3 py-2 text-sm text-white">
+              <p className="whitespace-pre-wrap">{entry.data.content}</p>
+              <p className="mt-1 text-right text-xs text-indigo-200">
+                {conversationStatusLabels[entry.data.status]}
+                {entry.data.failureReason ? ` — ${entry.data.failureReason}` : ''} ·{' '}
+                {new Date(entry.at).toLocaleString('es-AR')}
+              </p>
+            </div>
+          </li>
+        ) : (
+          <li key={`recv-${entry.data.id}`} className="flex justify-start">
+            <div className="max-w-md rounded-lg rounded-bl-none bg-slate-100 dark:bg-slate-800 px-3 py-2 text-sm text-slate-900 dark:text-slate-100">
+              <p className="whitespace-pre-wrap">
+                {entry.data.content || (entry.data.buttonPayload ? `[Botón] ${entry.data.buttonPayload}` : '—')}
+              </p>
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                {conversationClassificationLabels[entry.data.classification]}
+                {entry.data.buttonPayload ? ' · Botón' : ' · Texto libre'} · {new Date(entry.at).toLocaleString('es-AR')}
+              </p>
+            </div>
+          </li>
+        ),
+      )}
+    </ul>
+  );
+}
+
 export function ProspectDetailPage() {
   const { id } = useParams<{ id: string }>();
   const prospectId = Number(id);
@@ -620,6 +704,11 @@ export function ProspectDetailPage() {
           </ul>
         </section>
       </div>
+
+      <section className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4">
+        <h3 className="mb-3 text-sm font-medium text-slate-500 dark:text-slate-400">Conversación</h3>
+        <ConversationSection prospectId={data.id} />
+      </section>
 
       {data.contacts.some((c) => c.channel === 'Whatsapp') && (
         <section className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4">

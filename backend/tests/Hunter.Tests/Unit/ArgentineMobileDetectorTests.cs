@@ -20,4 +20,19 @@ public class ArgentineMobileDetectorTests
     {
         Assert.False(ArgentineMobileDetector.IsWhatsAppCapable(normalizedPhone));
     }
+
+    [Fact]
+    public void WithoutMobilePrefix_MobileNumber_RemovesThe9()
+    {
+        Assert.Equal("541122692061", ArgentineMobileDetector.WithoutMobilePrefix("5491122692061"));
+    }
+
+    [Theory]
+    [InlineData("541141234567")] // ya no tiene el "9": no aplica
+    [InlineData("11122692061")]  // sin prefijo de país: no aplica
+    [InlineData("")]
+    public void WithoutMobilePrefix_NonMobile_ReturnsNull(string normalizedPhone)
+    {
+        Assert.Null(ArgentineMobileDetector.WithoutMobilePrefix(normalizedPhone));
+    }
 }
