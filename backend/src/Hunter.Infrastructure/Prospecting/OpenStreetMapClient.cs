@@ -77,6 +77,9 @@ public class OpenStreetMapClient(
             return [];
         }
 
+        if (!string.IsNullOrEmpty(parsed?.Remark))
+            logger.LogWarning("[OpenStreetMap] Overpass devolvió remark para \"{Localities}\": {Remark}", logLabel, parsed.Remark);
+
         if (parsed?.Elements is null)
             return [];
 
@@ -200,8 +203,14 @@ public class OpenStreetMapClient(
             var lonStr = lon.ToString(CultureInfo.InvariantCulture);
             foreach (var filter in filters)
             {
+                // phoneFilter primero: es una condición de presencia de clave (barata, muy
+                // selectiva) y acota el conjunto de candidatos ANTES de evaluar filter. Importa
+                // sobre todo para KeywordToOsmFilter (name~regex): un regex no usa índice, así
+                // que evaluarlo contra "todo lo que tenga nombre" en el radio (calles, ríos, todo
+                // POI) en vez de contra "lo que ya tiene teléfono" es lo que hacía pisar el
+                // [timeout:N] y volver sin resultados en vez de encontrar el negocio buscado.
                 foreach (var phoneFilter in PhoneKeyFilters)
-                    sb.AppendLine($"  nwr(around:{radiusMeters},{latStr},{lonStr}){filter}{phoneFilter};");
+                    sb.AppendLine($"  nwr(around:{radiusMeters},{latStr},{lonStr}){phoneFilter}{filter};");
             }
         }
         sb.AppendLine(");");
@@ -223,8 +232,10 @@ public class OpenStreetMapClient(
         {
             foreach (var filter in filters)
             {
+                // Mismo motivo que en BuildRadiusQuery: phoneFilter primero para acotar antes de
+                // evaluar filter (crítico cuando filter es un name~regex sin índice).
                 foreach (var phoneFilter in PhoneKeyFilters)
-                    sb.AppendLine($"  nwr{filter}(area.zona{i}){phoneFilter};");
+                    sb.AppendLine($"  nwr{phoneFilter}(area.zona{i}){filter};");
             }
         }
         sb.AppendLine(");");
@@ -281,6 +292,13 @@ public class OpenStreetMapClient(
     {
         [JsonPropertyName("elements")]
         public List<OverpassElement>? Elements { get; set; }
+
+        // Presente cuando Overpass corta la ejecución antes de terminar (ej. "Query timed out
+        // in ... after N seconds"): igual devuelve 200 con los elementos ya encontrados hasta
+        // ese punto (o ninguno), así que sin loguear esto un timeout se ve idéntico a "sin
+        // resultados" en los logs.
+        [JsonPropertyName("remark")]
+        public string? Remark { get; set; }
     }
 
     private class OverpassElement
