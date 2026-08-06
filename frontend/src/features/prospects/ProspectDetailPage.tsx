@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useParams } from 'react-router';
+import { useAuthStore } from '../../store/authStore';
 import {
   addProspectContact,
   fetchProspectById,
@@ -301,9 +302,17 @@ function EditProspectForm({ prospect, onCancel, onSaved }: EditProspectFormProps
 
 const contactChannels: ProspectContactChannel[] = ['Phone', 'Whatsapp', 'Email', 'Instagram', 'Facebook'];
 
-function buildWhatsAppLink(phone: string): string {
+function buildWhatsAppLink(phone: string, prefilledText?: string): string {
   const digits = phone.replace(/[^\d]/g, '');
-  return `https://wa.me/${digits}`;
+  return prefilledText ? `https://wa.me/${digits}?text=${encodeURIComponent(prefilledText)}` : `https://wa.me/${digits}`;
+}
+
+// Mismo saludo sugerido que arma el backend para el aviso de Telegram (LeadHandoffMessageBuilder.
+// BuildSuggestedReply), para que el botón de acá y el de Telegram lleven el mismo mensaje
+// pre-cargado al abrir el chat.
+function buildSuggestedGreeting(contactName: string | null, businessName: string, assigneeFirstName: string): string {
+  const greetingName = contactName?.trim() ? contactName : businessName;
+  return `Hola ${greetingName}! ¿Cómo estás? Mi nombre es ${assigneeFirstName}, un gusto saludarte.`;
 }
 
 const contactInputClass =
@@ -597,6 +606,8 @@ export function ProspectDetailPage() {
   const [lastResult, setLastResult] = useState<TestMessageResult | null>(null);
   const [isEditing, setIsEditing] = useState(false);
 
+  const currentUser = useAuthStore((state) => state.user);
+
   const { data, isLoading, isError, error } = useQuery({
     queryKey: ['prospects', prospectId],
     queryFn: () => fetchProspectById(prospectId),
@@ -773,7 +784,29 @@ export function ProspectDetailPage() {
       </div>
 
       <details className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4" open>
-        <summary className="cursor-pointer text-sm font-medium text-slate-500 dark:text-slate-400">Conversación</summary>
+        <summary className="flex cursor-pointer items-center justify-between text-sm font-medium text-slate-500 dark:text-slate-400">
+          <span>Conversación</span>
+          {(() => {
+            const whatsappContact = data.contacts.find((c) => c.channel === 'Whatsapp');
+            if (!whatsappContact) return null;
+
+            const greeting = currentUser
+              ? buildSuggestedGreeting(data.contactName, data.businessName, currentUser.firstName)
+              : undefined;
+
+            return (
+              <a
+                href={buildWhatsAppLink(whatsappContact.value, greeting)}
+                target="_blank"
+                rel="noreferrer"
+                onClick={(e) => e.stopPropagation()}
+                className="rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-700"
+              >
+                💬 Escribirle a {data.contactName || data.businessName}
+              </a>
+            );
+          })()}
+        </summary>
         <div className="mt-3 max-h-96 overflow-y-auto pr-1">
           <ConversationSection prospectId={data.id} />
         </div>
