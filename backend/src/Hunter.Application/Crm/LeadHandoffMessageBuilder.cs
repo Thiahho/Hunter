@@ -67,6 +67,16 @@ public static class LeadHandoffMessageBuilder
         return sb.ToString();
     }
 
+    // Mismo link de wa.me que ya va en el texto (BuildFreeText), pero como botón inline de
+    // Telegram: un tap abre WhatsApp directo con el prospecto y el mensaje sugerido pre-cargado,
+    // sin depender de que Telegram detecte el link suelto como clickeable.
+    public static TelegramButton BuildWhatsAppButton(Prospect prospect, string prospectWhatsApp, string? assigneeFirstName = null)
+    {
+        var suggestedReply = string.IsNullOrWhiteSpace(assigneeFirstName) ? null : BuildSuggestedReply(prospect, assigneeFirstName);
+        var contactName = string.IsNullOrWhiteSpace(prospect.ContactName) ? prospect.BusinessName : prospect.ContactName;
+        return new TelegramButton($"💬 Escribirle a {contactName}", BuildWhatsAppLink(prospectWhatsApp, suggestedReply));
+    }
+
     private static string BuildSuggestedReply(Prospect prospect, string assigneeFirstName)
     {
         var greetingName = string.IsNullOrWhiteSpace(prospect.ContactName) ? prospect.BusinessName : prospect.ContactName;

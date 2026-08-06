@@ -199,7 +199,7 @@ public class WebhooksController(
                 ? "✅ Listo, vas a recibir alertas de leads acá."
                 : "Ese link ya expiró o no es válido. Generá uno nuevo desde Hunter.";
 
-            var sendResult = await telegramNotifier.SendAsync(chatId, reply, ct);
+            var sendResult = await telegramNotifier.SendAsync(chatId, reply, ct: ct);
             if (!sendResult.Success)
                 logger.LogWarning("[Telegram webhook] No se pudo responder al chat_id {ChatId}: {Error}", chatId, sendResult.Error);
         }

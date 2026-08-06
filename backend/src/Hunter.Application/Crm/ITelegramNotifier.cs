@@ -2,6 +2,11 @@ namespace Hunter.Application.Crm;
 
 public record TelegramSendResult(bool Success, string? Error);
 
+// Botón inline debajo del mensaje (Telegram Bot API "inline_keyboard"): a diferencia de un link
+// suelto en el texto, queda como un CTA táctil que abre la URL directo, sin depender de que
+// Telegram auto-detecte el link como tal.
+public record TelegramButton(string Text, string Url);
+
 // Abstracción del canal de alerta interno por Telegram (doc 23, sección 37 ampliada): un DM
 // privado al vendedor/administrativo asignado cuando se crea un lead nuevo, en paralelo al
 // aviso por WhatsApp. Vive en Application (no en Infrastructure) por el mismo motivo que
@@ -13,5 +18,5 @@ public interface ITelegramNotifier
     // vez de las opciones completas de WhatsApp. null = Telegram no está configurado.
     string? BotUsername => null;
 
-    Task<TelegramSendResult> SendAsync(string chatId, string message, CancellationToken ct = default);
+    Task<TelegramSendResult> SendAsync(string chatId, string message, TelegramButton? button = null, CancellationToken ct = default);
 }

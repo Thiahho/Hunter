@@ -6,7 +6,7 @@ namespace Hunter.Tests.TestSupport;
 // poder asertar chat_id/contenido, y permite simular fallos sin romper el flujo que los dispara.
 public class RecordingTelegramNotifier : ITelegramNotifier
 {
-    public List<(string ChatId, string Message)> SentMessages { get; } = [];
+    public List<(string ChatId, string Message, TelegramButton? Button)> SentMessages { get; } = [];
 
     // null por defecto = Telegram no configurado (mismo comportamiento que StubTelegramNotifier);
     // los tests que necesitan simular un bot configurado lo setean explícitamente.
@@ -16,9 +16,9 @@ public class RecordingTelegramNotifier : ITelegramNotifier
     public string? NextSendError { get; set; }
     public bool ThrowOnNextSend { get; set; }
 
-    public Task<TelegramSendResult> SendAsync(string chatId, string message, CancellationToken ct = default)
+    public Task<TelegramSendResult> SendAsync(string chatId, string message, TelegramButton? button = null, CancellationToken ct = default)
     {
-        SentMessages.Add((chatId, message));
+        SentMessages.Add((chatId, message, button));
 
         if (ThrowOnNextSend)
             throw new InvalidOperationException("Fallo simulado de Telegram.");

@@ -55,6 +55,22 @@ public class TelegramNotifierTests
     }
 
     [Fact]
+    public async Task SendAsync_WithButton_IncludesInlineKeyboardWithUrl()
+    {
+        var (notifier, handler) = CreateNotifier(HttpStatusCode.OK, """{"ok":true,"result":{}}""");
+
+        var result = await notifier.SendAsync(
+            "555111222", "🔥 NUEVO LEAD", new Hunter.Application.Crm.TelegramButton("💬 Escribirle a Juan", "https://wa.me/5491112345678?text=Hola"));
+
+        Assert.True(result.Success);
+
+        using var doc = JsonDocument.Parse(handler.LastRequestBody!);
+        var button = doc.RootElement.GetProperty("reply_markup").GetProperty("inline_keyboard")[0][0];
+        Assert.Equal("💬 Escribirle a Juan", button.GetProperty("text").GetString());
+        Assert.Equal("https://wa.me/5491112345678?text=Hola", button.GetProperty("url").GetString());
+    }
+
+    [Fact]
     public async Task SendAsync_ApiError_ReturnsFailureWithDescription()
     {
         var (notifier, _) = CreateNotifier(HttpStatusCode.BadRequest, """{"ok":false,"error_code":400,"description":"Bad Request: chat not found"}""");

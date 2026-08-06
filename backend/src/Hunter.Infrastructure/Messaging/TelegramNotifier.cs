@@ -18,7 +18,7 @@ public class TelegramNotifier(
 {
     public string? BotUsername => options.Value.BotUsername;
 
-    public async Task<TelegramSendResult> SendAsync(string chatId, string message, CancellationToken ct = default)
+    public async Task<TelegramSendResult> SendAsync(string chatId, string message, TelegramButton? button = null, CancellationToken ct = default)
     {
         try
         {
@@ -29,9 +29,17 @@ public class TelegramNotifier(
             // que "parece" absoluto y tira UriFormatException en el sentido contrario. La única
             // forma robusta es armar el string absoluto completo a mano: con el "https://" ya
             // puesto al principio, el primer "://" es inequívocamente el separador de esquema y
-            // los ":" del token quedan adentro del path, donde son un carácter válido más.
+            // los ":" del token quedan adentro del path, donde son un carácter más válido.
             var requestUri = $"{httpClient.BaseAddress}bot{options.Value.BotToken}/sendMessage";
-            using var response = await httpClient.PostAsJsonAsync(requestUri, new { chat_id = chatId, text = message }, ct);
+            var payload = button is null
+                ? new { chat_id = chatId, text = message }
+                : (object)new
+                {
+                    chat_id = chatId,
+                    text = message,
+                    reply_markup = new { inline_keyboard = new[] { new[] { new { text = button.Text, url = button.Url } } } }
+                };
+            using var response = await httpClient.PostAsJsonAsync(requestUri, payload, ct);
 
             var body = await response.Content.ReadAsStringAsync(ct);
 

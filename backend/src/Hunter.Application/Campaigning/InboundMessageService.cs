@@ -341,7 +341,7 @@ public class InboundMessageService(
             var freeText = LeadHandoffMessageBuilder.BuildFreeText(prospect, prospectMessage, prospectWhatsApp, assignee.FirstName);
 
             await NotifyByWhatsAppAsync(lead, assignee.Phone, prospect, prospectMessage, freeText, ct);
-            await NotifyByTelegramAsync(lead, assignee.TelegramChatId, freeText, ct);
+            await NotifyByTelegramAsync(lead, assignee.TelegramChatId, prospect, prospectWhatsApp, assignee.FirstName, freeText, ct);
         }
         catch (Exception ex)
         {
@@ -392,7 +392,8 @@ public class InboundMessageService(
 
     // A diferencia de WhatsApp, Telegram no tiene ventana de servicio de 24hs ni requiere
     // plantilla aprobada: siempre es texto libre.
-    private async Task NotifyByTelegramAsync(Lead lead, string? assigneeTelegramChatId, string freeText, CancellationToken ct)
+    private async Task NotifyByTelegramAsync(
+        Lead lead, string? assigneeTelegramChatId, Prospect prospect, string prospectWhatsApp, string assigneeFirstName, string freeText, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(assigneeTelegramChatId))
         {
@@ -402,7 +403,8 @@ public class InboundMessageService(
             return;
         }
 
-        var telegramResult = await telegramNotifier.SendAsync(assigneeTelegramChatId, freeText, ct);
+        var button = LeadHandoffMessageBuilder.BuildWhatsAppButton(prospect, prospectWhatsApp, assigneeFirstName);
+        var telegramResult = await telegramNotifier.SendAsync(assigneeTelegramChatId, freeText, button, ct);
 
         if (!telegramResult.Success)
         {

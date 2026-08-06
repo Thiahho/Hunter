@@ -7,9 +7,10 @@ namespace Hunter.Infrastructure.Messaging;
 // registra, igual que StubMessageProvider para WhatsApp sin configurar.
 public class StubTelegramNotifier(ILogger<StubTelegramNotifier> logger) : ITelegramNotifier
 {
-    public Task<TelegramSendResult> SendAsync(string chatId, string message, CancellationToken ct = default)
+    public Task<TelegramSendResult> SendAsync(string chatId, string message, TelegramButton? button = null, CancellationToken ct = default)
     {
-        logger.LogInformation("[StubTelegramNotifier] chat_id {ChatId}: {Message}", chatId, message);
+        logger.LogInformation(
+            "[StubTelegramNotifier] chat_id {ChatId}: {Message} (botón: {Button})", chatId, message, button is null ? "ninguno" : $"{button.Text} -> {button.Url}");
         return Task.FromResult(new TelegramSendResult(true, null));
     }
 }
