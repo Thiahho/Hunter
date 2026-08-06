@@ -25,7 +25,6 @@ export interface ScheduleProspectAutomationRequest {
   categories?: ProspectCategory[];
   radiusKm: number;
   maxResults: number;
-  campaignId: number;
   scheduledAt: string;
   keywords?: string[];
 }

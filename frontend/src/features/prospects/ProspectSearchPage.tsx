@@ -11,7 +11,6 @@ import {
   type ImportConfirmResultDto,
   type ImportPreviewDto,
 } from '../../api/imports';
-import { searchCampaigns } from '../../api/campaigns';
 import {
   cancelProspectAutomation,
   createProspectAutomation,
@@ -220,30 +219,33 @@ export function ProspectSearchPage() {
   });
 
   const queryClient = useQueryClient();
-  const [scheduleCampaignId, setScheduleCampaignId] = useState('');
-  const [scheduleAt, setScheduleAt] = useState('');
-
-  const campaignsQuery = useQuery({
-    queryKey: ['campaigns', 'schedulable'],
-    queryFn: () => searchCampaigns({ pageSize: 100 }),
-  });
-  // Solo campañas en un estado editable pueden recibir nuevos destinatarios y arrancar
-  // (ver validación equivalente en ScheduledProspectAutomationService.CreateAsync).
-  const schedulableCampaigns = (campaignsQuery.data?.items ?? []).filter((c) =>
-    ['Draft', 'Ready', 'Paused'].includes(c.status),
-  );
-  const selectedCampaign = schedulableCampaigns.find((c) => c.id === Number(scheduleCampaignId));
+  const [scheduleAtInput, setScheduleAtInput] = useState('');
+  const [scheduleTimes, setScheduleTimes] = useState<string[]>([]);
 
   const automationsQuery = useQuery({
     queryKey: ['prospect-automations'],
     queryFn: listProspectAutomations,
   });
 
+  // La campaña destino ya no se elige acá: el backend la resuelve solo (reusa o crea la campaña
+  // "de sistema" de WhatsApp), así que un solo submit puede mandar varias fechas/horarios juntos
+  // — uno por cada automatización a programar, en orden, para que la resolución de campaña
+  // compartida no compita entre sí (ver ScheduledProspectAutomationService.ResolveDefaultCampaignAsync).
   const scheduleMutation = useMutation({
-    mutationFn: createProspectAutomation,
+    mutationFn: async (scheduledAts: string[]) => {
+      for (const scheduledAt of scheduledAts) {
+        await createProspectAutomation({
+          localities,
+          categories: selectedCategories.length > 0 ? selectedCategories : undefined,
+          keywords: keywords.length > 0 ? keywords : undefined,
+          radiusKm,
+          maxResults,
+          scheduledAt,
+        });
+      }
+    },
     onSuccess: () => {
-      setScheduleAt('');
-      setScheduleCampaignId('');
+      setScheduleTimes([]);
       queryClient.invalidateQueries({ queryKey: ['prospect-automations'] });
     },
   });
@@ -253,19 +255,22 @@ export function ProspectSearchPage() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['prospect-automations'] }),
   });
 
+  function addScheduleTime() {
+    if (!scheduleAtInput) return;
+    const iso = new Date(scheduleAtInput).toISOString();
+    setScheduleTimes((prev) => (prev.includes(iso) ? prev : [...prev, iso].sort()));
+    setScheduleAtInput('');
+  }
+
+  function removeScheduleTime(iso: string) {
+    setScheduleTimes((prev) => prev.filter((t) => t !== iso));
+  }
+
   function handleSchedule(event: FormEvent) {
     event.preventDefault();
-    if (localities.length === 0 || !hasRubroSelected || !scheduleCampaignId || !scheduleAt) return;
+    if (localities.length === 0 || !hasRubroSelected || scheduleTimes.length === 0) return;
 
-    scheduleMutation.mutate({
-      localities,
-      categories: selectedCategories.length > 0 ? selectedCategories : undefined,
-      keywords: keywords.length > 0 ? keywords : undefined,
-      radiusKm,
-      maxResults,
-      campaignId: Number(scheduleCampaignId),
-      scheduledAt: new Date(scheduleAt).toISOString(),
-    });
+    scheduleMutation.mutate(scheduleTimes);
   }
 
   function resetSearch() {
@@ -717,62 +722,63 @@ export function ProspectSearchPage() {
         <div>
           <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Programar automatización</h3>
           <p className="text-xs text-slate-500 dark:text-slate-400">
-            Elegí una fecha/hora: en ese momento el sistema busca los prospectos con el rubro y zonas de arriba, los
-            guarda automáticamente y envía la campaña seleccionada sin revisión manual. Siempre busca por
-            OpenStreetMap (gratis) — el selector de fuente de arriba solo aplica a la búsqueda manual.
+            Agregá una o varias fechas/horarios: en cada uno, el sistema busca los prospectos con el rubro y zonas de
+            arriba, los guarda automáticamente y les manda la plantilla de WhatsApp de la organización sin revisión
+            manual — no hace falta armar una campaña a mano. Siempre busca por OpenStreetMap (gratis) — el selector
+            de fuente de arriba solo aplica a la búsqueda manual.
           </p>
         </div>
 
-        <form onSubmit={handleSchedule} className="flex flex-wrap items-end gap-4">
-          <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Campaña</label>
-            <select
-              value={scheduleCampaignId}
-              onChange={(e) => setScheduleCampaignId(e.target.value)}
-              className={`${inputClass} w-56`}
+        <form onSubmit={handleSchedule} className="space-y-3">
+          <div className="flex flex-wrap items-end gap-4">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Fecha y hora</label>
+              <input
+                type="datetime-local"
+                value={scheduleAtInput}
+                onChange={(e) => setScheduleAtInput(e.target.value)}
+                className={`${inputClass} w-56`}
+              />
+            </div>
+            <button
+              type="button"
+              onClick={addScheduleTime}
+              disabled={!scheduleAtInput}
+              className="shrink-0 rounded-md border border-slate-300 dark:border-slate-700 px-3 py-2 text-sm font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-40"
             >
-              <option value="">Seleccionar…</option>
-              {schedulableCampaigns.map((campaign) => (
-                <option key={campaign.id} value={campaign.id}>
-                  {campaign.name} ({campaign.messageTemplateName})
-                </option>
+              Agregar fecha
+            </button>
+            <button
+              type="submit"
+              disabled={scheduleMutation.isPending || localities.length === 0 || !hasRubroSelected || scheduleTimes.length === 0}
+              className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-60"
+            >
+              {scheduleMutation.isPending
+                ? 'Programando…'
+                : `Programar${scheduleTimes.length > 1 ? ` (${scheduleTimes.length} fechas)` : ''}`}
+            </button>
+          </div>
+
+          {scheduleTimes.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {scheduleTimes.map((iso) => (
+                <span
+                  key={iso}
+                  className="flex items-center gap-1 rounded-full bg-indigo-50 dark:bg-indigo-500/10 px-3 py-1 text-xs font-medium text-indigo-700 dark:text-indigo-300"
+                >
+                  {new Date(iso).toLocaleString('es-AR')}
+                  <button
+                    type="button"
+                    onClick={() => removeScheduleTime(iso)}
+                    className="text-indigo-500 hover:text-indigo-800 dark:hover:text-indigo-100"
+                    aria-label={`Quitar ${new Date(iso).toLocaleString('es-AR')}`}
+                  >
+                    ×
+                  </button>
+                </span>
               ))}
-            </select>
-            {campaignsQuery.data && schedulableCampaigns.length === 0 && (
-              <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
-                No hay campañas disponibles para programar (deben estar en Borrador, Lista o Pausada).
-              </p>
-            )}
-            {selectedCampaign && (
-              <p className="mt-1 text-xs text-slate-400">
-                Plantilla: {selectedCampaign.messageTemplateName} · {selectedCampaign.messagesPerMinute} msj/min
-              </p>
-            )}
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Fecha y hora</label>
-            <input
-              type="datetime-local"
-              value={scheduleAt}
-              onChange={(e) => setScheduleAt(e.target.value)}
-              className={`${inputClass} w-56`}
-            />
-          </div>
-
-          <button
-            type="submit"
-            disabled={
-              scheduleMutation.isPending ||
-              localities.length === 0 ||
-              !hasRubroSelected ||
-              !scheduleCampaignId ||
-              !scheduleAt
-            }
-            className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-60"
-          >
-            {scheduleMutation.isPending ? 'Programando…' : 'Programar'}
-          </button>
+            </div>
+          )}
         </form>
 
         {scheduleMutation.isError && (

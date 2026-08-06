@@ -46,15 +46,9 @@ public class ScheduledProspectAutomationService(
 
         var organizationId = currentUser.OrganizationId!.Value;
 
-        // Misma regla que CampaignService.GetEditableCampaignAsync (privado, no reusable desde
-        // acá): una campaña Running/Completed/Cancelled ya no admite que se le sumen
-        // destinatarios nuevos de esta forma.
-        var campaign = await db.Campaigns.FirstOrDefaultAsync(c => c.Id == request.CampaignId, ct);
-        if (campaign is null)
-            return Result<ScheduledProspectAutomationDto>.Failure("La campaña indicada no existe.");
-        if (campaign.Status is not (CampaignStatus.Draft or CampaignStatus.Ready or CampaignStatus.Paused))
-            return Result<ScheduledProspectAutomationDto>.Failure(
-                $"La campaña está en estado {campaign.Status}, no admite sumarle destinatarios nuevos.");
+        var campaignIdResult = await ResolveDefaultCampaignAsync(organizationId, currentUser.UserId!.Value, ct);
+        if (!campaignIdResult.Succeeded)
+            return Result<ScheduledProspectAutomationDto>.Failure(campaignIdResult.Error!);
 
         var criteria = new OpenStreetMapImportRequest(localities, request.Categories, request.RadiusKm, request.MaxResults, request.Keywords);
 
@@ -63,7 +57,7 @@ public class ScheduledProspectAutomationService(
             OrganizationId = organizationId,
             CreatedByUserId = currentUser.UserId!.Value,
             SearchCriteriaJson = JsonSerializer.Serialize(criteria),
-            CampaignId = request.CampaignId,
+            CampaignId = campaignIdResult.Value,
             ScheduledAt = request.ScheduledAt,
             Status = ScheduledAutomationStatus.Pending
         };
@@ -155,11 +149,26 @@ public class ScheduledProspectAutomationService(
             var addResult = await campaignService.AddRecipientsAsync(automation.CampaignId, new AddRecipientsRequest(newProspectIds), ct);
             if (!addResult.Succeeded)
             {
-                await FailAsync(
-                    automation,
-                    $"Se importaron {newProspectIds.Count} prospectos, pero no se pudieron sumar a la campaña: {addResult.Error}",
-                    ct);
-                return;
+                // La campaña "de sistema" compartida puede haber arrancado (Running) entre que se
+                // programó esta automatización y que le tocó correr — típico cuando se programan
+                // varias fechas juntas y la primera ya mandó y arrancó la campaña que las demás
+                // iban a reusar. Se resuelve la campaña vigente en este momento (reusa una libre o
+                // crea una nueva) y se reintenta una vez antes de darla por fallida.
+                var retryCampaignId = await ResolveDefaultCampaignAsync(automation.OrganizationId, automation.CreatedByUserId, ct);
+                if (retryCampaignId.Succeeded)
+                {
+                    automation.CampaignId = retryCampaignId.Value;
+                    addResult = await campaignService.AddRecipientsAsync(automation.CampaignId, new AddRecipientsRequest(newProspectIds), ct);
+                }
+
+                if (!addResult.Succeeded)
+                {
+                    await FailAsync(
+                        automation,
+                        $"Se importaron {newProspectIds.Count} prospectos, pero no se pudieron sumar a la campaña: {addResult.Error}",
+                        ct);
+                    return;
+                }
             }
 
             // StartAsync falla si la campaña ya está Running (ej. otra automatización la arrancó
@@ -226,6 +235,56 @@ public class ScheduledProspectAutomationService(
         automation.Status = ScheduledAutomationStatus.Failed;
         automation.ResultSummary = reason;
         await db.SaveChangesAsync(ct);
+    }
+
+    // Nombre fijo para poder encontrar y reusar siempre la misma campaña "de sistema" en vez de
+    // crear una nueva por cada automatización programada — así el usuario nunca tiene que armar
+    // una campaña a mano antes de poder programar. No toca campañas creadas manualmente: solo
+    // busca/crea por este nombre exacto.
+    private const string DefaultCampaignName = "Prospección automática (WhatsApp)";
+
+    private async Task<Result<int>> ResolveDefaultCampaignAsync(int organizationId, int userId, CancellationToken ct)
+    {
+        var existing = await db.Campaigns
+            .Where(c => c.OrganizationId == organizationId
+                && c.Channel == MessagingChannel.Whatsapp
+                && c.Name == DefaultCampaignName
+                && (c.Status == CampaignStatus.Draft || c.Status == CampaignStatus.Ready || c.Status == CampaignStatus.Paused))
+            .OrderByDescending(c => c.CreatedAt)
+            .FirstOrDefaultAsync(ct);
+
+        if (existing is not null)
+            return Result<int>.Success(existing.Id);
+
+        // El contenido real que Meta entrega lo define WhatsAppCloudApi:TemplateName a nivel
+        // organización (ver WhatsAppCloudApiMessageProvider), no esta plantilla — pero Campaign
+        // igual exige un MessageTemplateId válido, así que se toma la única plantilla de WhatsApp
+        // activa que no sea la de catálogo (esa es para la respuesta automática post-"Interesado",
+        // no para el primer contacto).
+        var candidateTemplates = await db.MessageTemplates
+            .Where(t => t.OrganizationId == organizationId && t.Channel == MessagingChannel.Whatsapp && t.IsActive && !t.IsCatalogTemplate)
+            .Select(t => t.Id)
+            .ToListAsync(ct);
+
+        if (candidateTemplates.Count == 0)
+            return Result<int>.Failure(
+                "No hay ninguna plantilla de WhatsApp activa para elegir automáticamente. Cargá una plantilla antes de programar.");
+        if (candidateTemplates.Count > 1)
+            return Result<int>.Failure(
+                "Hay más de una plantilla de WhatsApp activa: no se puede elegir automáticamente cuál usar. Desactivá las que no correspondan.");
+
+        var campaign = new Campaign
+        {
+            OrganizationId = organizationId,
+            Name = DefaultCampaignName,
+            Channel = MessagingChannel.Whatsapp,
+            MessageTemplateId = candidateTemplates[0],
+            CreatedBy = userId
+        };
+        db.Campaigns.Add(campaign);
+        await db.SaveChangesAsync(ct);
+
+        return Result<int>.Success(campaign.Id);
     }
 
     private async Task<ScheduledProspectAutomationDto> ToDtoAsync(ScheduledProspectAutomation automation, CancellationToken ct)
