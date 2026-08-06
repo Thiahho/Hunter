@@ -232,6 +232,7 @@ export function ProspectSearchPage() {
   const schedulableCampaigns = (campaignsQuery.data?.items ?? []).filter((c) =>
     ['Draft', 'Ready', 'Paused'].includes(c.status),
   );
+  const selectedCampaign = schedulableCampaigns.find((c) => c.id === Number(scheduleCampaignId));
 
   const automationsQuery = useQuery({
     queryKey: ['prospect-automations'],
@@ -733,13 +734,18 @@ export function ProspectSearchPage() {
               <option value="">Seleccionar…</option>
               {schedulableCampaigns.map((campaign) => (
                 <option key={campaign.id} value={campaign.id}>
-                  {campaign.name}
+                  {campaign.name} ({campaign.messageTemplateName})
                 </option>
               ))}
             </select>
             {campaignsQuery.data && schedulableCampaigns.length === 0 && (
               <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
                 No hay campañas disponibles para programar (deben estar en Borrador, Lista o Pausada).
+              </p>
+            )}
+            {selectedCampaign && (
+              <p className="mt-1 text-xs text-slate-400">
+                Plantilla: {selectedCampaign.messageTemplateName} · {selectedCampaign.messagesPerMinute} msj/min
               </p>
             )}
           </div>

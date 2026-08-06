@@ -9,6 +9,8 @@ export interface CampaignListItem {
   name: string;
   status: CampaignStatus;
   channel: MessagingChannel;
+  messageTemplateName: string;
+  messagesPerMinute: number;
   recipientsCount: number;
   sentCount: number;
   createdAt: string;

@@ -27,6 +27,8 @@ public record CampaignListItemDto(
     string Name,
     CampaignStatus Status,
     MessagingChannel Channel,
+    string MessageTemplateName,
+    int MessagesPerMinute,
     int RecipientsCount,
     int SentCount,
     DateTimeOffset CreatedAt);

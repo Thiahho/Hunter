@@ -75,6 +75,8 @@ public class CampaignService(
                 c.Name,
                 c.Status,
                 c.Channel,
+                c.MessageTemplate.Name,
+                c.MessagesPerMinute,
                 c.Recipients.Count,
                 c.Recipients.Count(r => r.Status != CampaignRecipientStatus.Pending && r.Status != CampaignRecipientStatus.Queued),
                 c.CreatedAt))
