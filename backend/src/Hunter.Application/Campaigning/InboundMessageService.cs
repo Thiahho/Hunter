@@ -175,9 +175,12 @@ public class InboundMessageService(
         await db.SaveChangesAsync(ct);
 
         // La notificación al vendedor corre después de guardar: un envío lento o fallido de
-        // WhatsApp nunca debe demorar ni revertir la persistencia del lead. Solo se notifica en
-        // un lead genuinamente nuevo, no en cada mensaje de seguimiento de un lead ya abierto.
-        if (lead is not null && leadCreated)
+        // WhatsApp nunca debe demorar ni revertir la persistencia del lead. Se notifica en un
+        // lead genuinamente nuevo, y también cuando el prospecto vuelve a tocar el botón "Me
+        // interesa" sobre un lead ya abierto (señal de compra fuerte y explícita); un simple
+        // mensaje de texto de seguimiento sobre un lead ya abierto no reenvía nada, para no
+        // spamear al vendedor con cada respuesta.
+        if (lead is not null && (leadCreated || isInterestButtonTap))
             await NotifyAssigneeAsync(lead, prospect, request.Content, prospectContact.Value, ct);
         else if (lead is not null)
             logger.LogInformation(

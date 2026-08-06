@@ -1,5 +1,6 @@
 using Hunter.Application.Campaigning;
 using Hunter.Application.Campaigning.Contracts;
+using Hunter.Domain.Campaigning;
 using Hunter.Domain.Identity;
 using Hunter.Domain.Organizations;
 using Hunter.Domain.Prospecting;
@@ -223,6 +224,37 @@ public class LeadHandoffNotificationTests
         // El segundo mensaje reutiliza el lead abierto (mismo prospecto, lead sigue New):
         // notificar ahí spamearía al vendedor en cada follow-up.
         Assert.Single(provider.SentRequests);
+    }
+
+    [Fact]
+    public async Task SecondButtonTap_LeadReused_NotifiesAgain()
+    {
+        var dbName = TestDb.NewDbName();
+        var (orgId, _) = await SeedOrgWithSellerAsync(dbName, sellerPhone: "5491199998888");
+        await SeedProspectAsync(dbName, orgId, "5491112345678");
+
+        var provider = new RecordingMessageProvider();
+
+        await using (var db1 = TestDb.Create(dbName, organizationId: null))
+        {
+            var service1 = new InboundMessageService(db1, new KeywordIntentClassifier(), provider, new RecordingTelegramNotifier(), NullLogger<InboundMessageService>.Instance);
+            var result1 = await service1.ProcessAsync(new InboundMessageRequest(
+                orgId, "5491112345678", "Estoy interesado", ExternalInboundId: "wh-btn-1", ButtonPayload: QuickReplyPayloads.Interested));
+            Assert.True(result1.Succeeded);
+        }
+
+        await using (var db2 = TestDb.Create(dbName, organizationId: null))
+        {
+            var service2 = new InboundMessageService(db2, new KeywordIntentClassifier(), provider, new RecordingTelegramNotifier(), NullLogger<InboundMessageService>.Instance);
+            var result2 = await service2.ProcessAsync(new InboundMessageRequest(
+                orgId, "5491112345678", "Estoy interesado", ExternalInboundId: "wh-btn-2", ButtonPayload: QuickReplyPayloads.Interested));
+            Assert.True(result2.Succeeded);
+        }
+
+        // A diferencia del seguimiento por texto libre, un segundo tap del botón "Me interesa"
+        // es señal de compra explícita y sí vuelve a avisar al vendedor, aunque el lead ya
+        // estuviera abierto del primer tap.
+        Assert.Equal(2, provider.SentRequests.Count);
     }
 
     [Fact]
