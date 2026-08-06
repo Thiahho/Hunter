@@ -779,6 +779,20 @@ export function ProspectSearchPage() {
               ))}
             </div>
           )}
+
+          {(localities.length === 0 || !hasRubroSelected || scheduleTimes.length === 0) && (
+            <p className="text-xs text-amber-600 dark:text-amber-400">
+              Para poder programar hace falta completar, arriba en el formulario de búsqueda:{' '}
+              {[
+                !hasRubroSelected ? 'un rubro' : null,
+                localities.length === 0 ? 'al menos una zona/localidad' : null,
+                scheduleTimes.length === 0 ? 'al menos una fecha (con "Agregar fecha")' : null,
+              ]
+                .filter(Boolean)
+                .join(', ')}
+              .
+            </p>
+          )}
         </form>
 
         {scheduleMutation.isError && (
