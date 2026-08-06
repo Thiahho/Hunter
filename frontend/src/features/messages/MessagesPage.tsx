@@ -97,6 +97,7 @@ function SentMessagesTab() {
     queryKey: ['messages', { status, page }],
     queryFn: () => searchMessages({ status: status || undefined, page, pageSize: PAGE_SIZE }),
     placeholderData: (previous) => previous,
+    refetchInterval: 15000,
   });
 
   function changePage(next: number) {
@@ -142,21 +143,32 @@ function SentMessagesTab() {
 
   return (
     <div className="space-y-3">
-      <select
-        value={status}
-        onChange={(e) => {
-          setStatus(e.target.value as MessageStatus | '');
-          changePage(1);
-        }}
-        className={selectClass}
-      >
-        <option value="">Todos los estados</option>
-        {statusOptions.map((s) => (
-          <option key={s} value={s}>
-            {statusLabels[s]}
-          </option>
-        ))}
-      </select>
+      <div className="flex items-center gap-2">
+        <select
+          value={status}
+          onChange={(e) => {
+            setStatus(e.target.value as MessageStatus | '');
+            changePage(1);
+          }}
+          className={selectClass}
+        >
+          <option value="">Todos los estados</option>
+          {statusOptions.map((s) => (
+            <option key={s} value={s}>
+              {statusLabels[s]}
+            </option>
+          ))}
+        </select>
+        <button
+          type="button"
+          onClick={() => query.refetch()}
+          disabled={query.isFetching}
+          className="rounded-md border border-slate-300 dark:border-slate-700 px-3 py-1.5 text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-60"
+        >
+          {query.isFetching ? 'Actualizando…' : 'Actualizar'}
+        </button>
+        <span className="text-xs text-slate-400">Se actualiza solo cada 15s</span>
+      </div>
 
       {query.isLoading && <p className="text-sm text-slate-500 dark:text-slate-400">Cargando...</p>}
       {query.isError && (
@@ -299,6 +311,7 @@ function ResponsesTab() {
     queryKey: ['message-responses', { classification, page }],
     queryFn: () => searchMessageResponses({ classification: classification || undefined, page, pageSize: PAGE_SIZE }),
     placeholderData: (previous) => previous,
+    refetchInterval: 15000,
   });
 
   function changePage(next: number) {
@@ -344,21 +357,32 @@ function ResponsesTab() {
 
   return (
     <div className="space-y-3">
-      <select
-        value={classification}
-        onChange={(e) => {
-          setClassification(e.target.value as IntentClassification | '');
-          changePage(1);
-        }}
-        className={selectClass}
-      >
-        <option value="">Todas las clasificaciones</option>
-        {classificationOptions.map((c) => (
-          <option key={c} value={c}>
-            {classificationLabels[c]}
-          </option>
-        ))}
-      </select>
+      <div className="flex items-center gap-2">
+        <select
+          value={classification}
+          onChange={(e) => {
+            setClassification(e.target.value as IntentClassification | '');
+            changePage(1);
+          }}
+          className={selectClass}
+        >
+          <option value="">Todas las clasificaciones</option>
+          {classificationOptions.map((c) => (
+            <option key={c} value={c}>
+              {classificationLabels[c]}
+            </option>
+          ))}
+        </select>
+        <button
+          type="button"
+          onClick={() => query.refetch()}
+          disabled={query.isFetching}
+          className="rounded-md border border-slate-300 dark:border-slate-700 px-3 py-1.5 text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-60"
+        >
+          {query.isFetching ? 'Actualizando…' : 'Actualizar'}
+        </button>
+        <span className="text-xs text-slate-400">Se actualiza solo cada 15s</span>
+      </div>
 
       {query.isLoading && <p className="text-sm text-slate-500 dark:text-slate-400">Cargando...</p>}
       {query.isError && (

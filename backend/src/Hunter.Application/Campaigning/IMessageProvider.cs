@@ -22,7 +22,11 @@ public record SendMessageRequest(
     string? TemplateNameOverride = null,
     IReadOnlyList<string>? TemplateParameters = null);
 
-public record SendMessageResult(bool Success, string? ExternalMessageId, string? Error);
+// SentContent = texto realmente entregado al destinatario, cuando el proveedor puede
+// resolverlo (ej. el body real de una plantilla de Meta, con sus parámetros ya reemplazados).
+// Null cuando no hay forma de saberlo (plantilla sin WabaId configurado, fetch fallido, etc.):
+// el caller debe caer de vuelta a su propio texto local en ese caso.
+public record SendMessageResult(bool Success, string? ExternalMessageId, string? Error, string? SentContent = null);
 
 // Abstracción de proveedor de mensajería (doc 07 Epic07 P1: "la aplicación no debe
 // depender directamente del proveedor"). Todavía no hay decisión tomada sobre

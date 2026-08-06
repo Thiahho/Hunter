@@ -8,6 +8,12 @@ public class WhatsAppCloudApiOptions
     public string? AccessToken { get; set; }
     public string ApiVersion { get; set; } = "v21.0";
 
+    // WhatsApp Business Account ID (distinto de PhoneNumberId). Solo se usa para consultar el
+    // texto real aprobado de TemplateName vía Graph API (GET /{WabaId}/message_templates), así
+    // el log de Mensajes muestra lo que Meta efectivamente entregó y no el texto libre local.
+    // Sin configurar, el envío funciona igual: Message.Content cae de vuelta al texto local.
+    public string? WabaId { get; set; }
+
     // MVP de un solo tenant por número de WhatsApp: el payload del webhook de Meta no trae
     // OrganizationId, así que lo resolvemos acá. Multi-número/multi-org queda para V2.
     public int? OrganizationId { get; set; }

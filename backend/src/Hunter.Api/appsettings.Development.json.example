@@ -17,6 +17,7 @@
   "WhatsAppCloudApi": {
     "PhoneNumberId": "CHANGE_ME_PHONE_NUMBER_ID",
     "AccessToken": "CHANGE_ME_META_ACCESS_TOKEN",
+    "WabaId": "CHANGE_ME_WHATSAPP_BUSINESS_ACCOUNT_ID",
     "AppSecret": "CHANGE_ME_META_APP_SECRET",
     "WebhookVerifyToken": "CHANGE_ME",
     "OrganizationId": 1,

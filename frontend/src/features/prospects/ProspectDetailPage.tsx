@@ -515,11 +515,20 @@ function ConversationSection({ prospectId }: { prospectId: number }) {
   const messagesQuery = useQuery({
     queryKey: ['messages', { prospectId }],
     queryFn: () => searchMessages({ prospectId, pageSize: 100 }),
+    refetchInterval: 15000,
   });
   const responsesQuery = useQuery({
     queryKey: ['message-responses', { prospectId }],
     queryFn: () => searchMessageResponses({ prospectId, pageSize: 100 }),
+    refetchInterval: 15000,
   });
+
+  const isRefetching = messagesQuery.isFetching || responsesQuery.isFetching;
+
+  function refreshNow() {
+    messagesQuery.refetch();
+    responsesQuery.refetch();
+  }
 
   if (messagesQuery.isLoading || responsesQuery.isLoading) {
     return <p className="text-sm text-slate-500 dark:text-slate-400">Cargando conversación...</p>;
@@ -530,14 +539,26 @@ function ConversationSection({ prospectId }: { prospectId: number }) {
     ...(responsesQuery.data?.items.map((r): ConversationEntry => ({ kind: 'received', at: r.receivedAt, data: r })) ?? []),
   ].sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime());
 
-  if (entries.length === 0) {
-    return <p className="text-sm text-slate-400">Todavía no hay mensajes con este prospecto.</p>;
-  }
-
   return (
-    <ul className="space-y-2">
-      {entries.map((entry) =>
-        entry.kind === 'sent' ? (
+    <div className="space-y-2">
+      <div className="flex items-center justify-end gap-2">
+        <span className="text-xs text-slate-400">Se actualiza solo cada 15s</span>
+        <button
+          type="button"
+          onClick={refreshNow}
+          disabled={isRefetching}
+          className="text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:underline disabled:opacity-60"
+        >
+          {isRefetching ? 'Actualizando…' : 'Actualizar'}
+        </button>
+      </div>
+
+      {entries.length === 0 ? (
+        <p className="text-sm text-slate-400">Todavía no hay mensajes con este prospecto.</p>
+      ) : (
+        <ul className="space-y-2">
+          {entries.map((entry) =>
+            entry.kind === 'sent' ? (
           <li key={`sent-${entry.data.id}`} className="flex justify-end">
             <div className="max-w-md rounded-lg rounded-br-none bg-indigo-600 px-3 py-2 text-sm text-white">
               <p className="whitespace-pre-wrap">{entry.data.content}</p>
@@ -560,9 +581,11 @@ function ConversationSection({ prospectId }: { prospectId: number }) {
               </p>
             </div>
           </li>
-        ),
+            ),
+          )}
+        </ul>
       )}
-    </ul>
+    </div>
   );
 }
 

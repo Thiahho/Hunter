@@ -1,6 +1,8 @@
+using System.Collections.Concurrent;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.RegularExpressions;
 using Hunter.Application.Campaigning;
 using Hunter.Domain.Campaigning;
 using Microsoft.Extensions.Logging;
@@ -19,6 +21,10 @@ public class WhatsAppCloudApiMessageProvider(
     public string ProviderName => "whatsapp_cloud_api";
 
     public string? HandoffTemplateName => options.Value.HandoffTemplateName;
+
+    // El texto real aprobado por Meta para cada (WabaId, plantilla, idioma) no cambia entre
+    // envíos, así que se cachea en proceso para no pegarle a la Graph API en cada mensaje.
+    private static readonly ConcurrentDictionary<string, string?> TemplateBodyCache = new();
 
     public async Task<SendMessageResult> SendAsync(SendMessageRequest request, CancellationToken ct = default)
     {
@@ -47,7 +53,8 @@ public class WhatsAppCloudApiMessageProvider(
 
             var result = JsonSerializer.Deserialize<WhatsAppSendResponse>(body);
             var externalId = result?.Messages?.FirstOrDefault()?.Id;
-            return new SendMessageResult(true, externalId, null);
+            var sentContent = await ResolveSentContentAsync(opts, request, ct);
+            return new SendMessageResult(true, externalId, null, sentContent);
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
         {
@@ -69,22 +76,18 @@ public class WhatsAppCloudApiMessageProvider(
 
     private static object BuildPayload(WhatsAppCloudApiOptions opts, string to, SendMessageRequest request)
     {
-        // Plantilla ad-hoc (ej. handoff a vendedores) con parámetros explícitos: pisa
-        // TemplateName/PreferFreeText, no lleva botones quick-reply.
-        if (!string.IsNullOrWhiteSpace(request.TemplateNameOverride))
+        var selection = ResolveTemplateSelection(opts, request);
+        if (selection is not null)
         {
-            return BuildTemplatePayload(
-                to, request.TemplateNameOverride, opts.HandoffTemplateLanguage,
-                request.TemplateParameters, quickReplyPayloads: []);
-        }
+            var (name, language, bodyParameters) = selection.Value;
 
-        // PreferFreeText fuerza texto libre aunque haya TemplateName configurada: usado para
-        // respuestas dentro de la ventana de servicio de 24hs (catálogo, handoff sin plantilla
-        // propia), donde texto libre es legal y evita repetir la plantilla de campaña.
-        if (!request.PreferFreeText && !string.IsNullOrWhiteSpace(opts.TemplateName))
-        {
-            var bodyParameters = BuildTemplateBodyParameters(opts, request);
-            return BuildTemplatePayload(to, opts.TemplateName, opts.TemplateLanguage, bodyParameters, opts.TemplateQuickReplyPayloads);
+            // La plantilla de handoff (TemplateNameOverride) es una notificación interna, no
+            // lleva los botones quick-reply de la plantilla de campaña.
+            var quickReplyPayloads = string.IsNullOrWhiteSpace(request.TemplateNameOverride)
+                ? opts.TemplateQuickReplyPayloads
+                : [];
+
+            return BuildTemplatePayload(to, name, language, bodyParameters, quickReplyPayloads);
         }
 
         // Sin plantilla aprobada por Meta configurada (o PreferFreeText): solo funciona dentro
@@ -96,6 +99,88 @@ public class WhatsAppCloudApiMessageProvider(
             type = "text",
             text = new { body = request.Content }
         };
+    }
+
+    // Decide qué plantilla (nombre + idioma + parámetros de body) corresponde a este envío, o
+    // null si va como texto libre. Compartido entre BuildPayload (arma el request a Meta) y
+    // ResolveSentContentAsync (reconstruye el texto real para loguear en Message.Content).
+    private static (string Name, string Language, IReadOnlyList<string>? BodyParameters)? ResolveTemplateSelection(
+        WhatsAppCloudApiOptions opts, SendMessageRequest request)
+    {
+        // Plantilla ad-hoc (ej. handoff a vendedores) con parámetros explícitos: pisa
+        // TemplateName/PreferFreeText.
+        if (!string.IsNullOrWhiteSpace(request.TemplateNameOverride))
+            return (request.TemplateNameOverride, opts.HandoffTemplateLanguage, request.TemplateParameters);
+
+        // PreferFreeText fuerza texto libre aunque haya TemplateName configurada: usado para
+        // respuestas dentro de la ventana de servicio de 24hs (catálogo, handoff sin plantilla
+        // propia), donde texto libre es legal y evita repetir la plantilla de campaña.
+        if (!request.PreferFreeText && !string.IsNullOrWhiteSpace(opts.TemplateName))
+            return (opts.TemplateName, opts.TemplateLanguage, BuildTemplateBodyParameters(opts, request));
+
+        return null;
+    }
+
+    // Reconstruye lo que el destinatario recibió de verdad: si se mandó texto libre, es
+    // request.Content tal cual; si se mandó plantilla, hay que traer el body real aprobado por
+    // Meta (nosotros solo tenemos el nombre, no el copy) y reemplazar sus {{n}} con los
+    // parámetros usados. Devuelve null cuando no se pudo resolver (sin WabaId configurado, fetch
+    // fallido, etc.) para que el caller caiga de vuelta a su propio texto local.
+    private async Task<string?> ResolveSentContentAsync(WhatsAppCloudApiOptions opts, SendMessageRequest request, CancellationToken ct)
+    {
+        var selection = ResolveTemplateSelection(opts, request);
+        if (selection is null)
+            return request.Content;
+
+        var (name, language, bodyParameters) = selection.Value;
+        var bodyText = await GetTemplateBodyTextAsync(opts, name, language, ct);
+        return bodyText is null ? null : SubstituteBodyParameters(bodyText, bodyParameters);
+    }
+
+    private async Task<string?> GetTemplateBodyTextAsync(WhatsAppCloudApiOptions opts, string templateName, string language, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(opts.WabaId))
+            return null;
+
+        var cacheKey = $"{opts.WabaId}:{templateName}:{language}";
+        if (TemplateBodyCache.TryGetValue(cacheKey, out var cached))
+            return cached;
+
+        try
+        {
+            using var response = await httpClient.GetAsync(
+                $"{opts.ApiVersion}/{opts.WabaId}/message_templates?name={Uri.EscapeDataString(templateName)}&fields=name,language,components",
+                ct);
+
+            if (!response.IsSuccessStatusCode)
+                return null;
+
+            var body = await response.Content.ReadAsStringAsync(ct);
+            var parsed = JsonSerializer.Deserialize<WhatsAppTemplateListResponse>(body);
+            var match = parsed?.Data?.FirstOrDefault(t => string.Equals(t.Language, language, StringComparison.OrdinalIgnoreCase));
+            var bodyComponent = match?.Components?.FirstOrDefault(c => string.Equals(c.Type, "BODY", StringComparison.OrdinalIgnoreCase));
+
+            TemplateBodyCache[cacheKey] = bodyComponent?.Text;
+            return bodyComponent?.Text;
+        }
+        catch (Exception ex) when (ex is HttpRequestException or JsonException or TaskCanceledException)
+        {
+            logger.LogWarning(
+                ex, "[WhatsAppCloudApi] No se pudo obtener el texto real de la plantilla {Template}/{Language}.", templateName, language);
+            return null;
+        }
+    }
+
+    private static string SubstituteBodyParameters(string bodyText, IReadOnlyList<string>? parameters)
+    {
+        if (parameters is null or { Count: 0 })
+            return bodyText;
+
+        return Regex.Replace(bodyText, @"\{\{(\d+)\}\}", m =>
+        {
+            var index = int.Parse(m.Groups[1].Value) - 1;
+            return index >= 0 && index < parameters.Count ? parameters[index] : m.Value;
+        });
     }
 
     private static object BuildTemplatePayload(
@@ -184,5 +269,29 @@ public class WhatsAppCloudApiMessageProvider(
     {
         [JsonPropertyName("message")]
         public string? Message { get; set; }
+    }
+
+    private class WhatsAppTemplateListResponse
+    {
+        [JsonPropertyName("data")]
+        public List<WhatsAppTemplateData>? Data { get; set; }
+    }
+
+    private class WhatsAppTemplateData
+    {
+        [JsonPropertyName("language")]
+        public string? Language { get; set; }
+
+        [JsonPropertyName("components")]
+        public List<WhatsAppTemplateComponent>? Components { get; set; }
+    }
+
+    private class WhatsAppTemplateComponent
+    {
+        [JsonPropertyName("type")]
+        public string? Type { get; set; }
+
+        [JsonPropertyName("text")]
+        public string? Text { get; set; }
     }
 }

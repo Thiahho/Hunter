@@ -237,7 +237,11 @@ public class CampaignService(
                 TemplateId = campaign.MessageTemplateId,
                 Channel = campaign.Channel,
                 Provider = messageProvider.ProviderName,
-                Content = content,
+                // Igual que en TestMessageService: con plantilla de Meta configurada, lo que se
+                // manda de verdad es el copy aprobado por Meta, no campaign.MessageTemplate.Content
+                // (que es solo la referencia local). sendResult.SentContent trae ese texto real
+                // cuando el proveedor pudo resolverlo.
+                Content = sendResult.SentContent ?? content,
                 ExternalMessageId = sendResult.ExternalMessageId,
                 Status = sendResult.Success ? MessageStatus.Sent : MessageStatus.Failed,
                 SentAt = sendResult.Success ? DateTimeOffset.UtcNow : null,

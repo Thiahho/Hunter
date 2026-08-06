@@ -28,6 +28,10 @@ services:
       Webhooks__InboundSecret: ${WEBHOOKS_INBOUND_SECRET:-}
       WhatsAppCloudApi__PhoneNumberId: ${WHATSAPP_PHONE_NUMBER_ID:-}
       WhatsAppCloudApi__AccessToken: ${WHATSAPP_ACCESS_TOKEN:-}
+      # WhatsApp Business Account ID (distinto del PhoneNumberId): solo se usa para traer de la
+      # Graph API el texto real aprobado de TemplateName y loguear eso en Message.Content en vez
+      # del texto libre local. Sin esto, el envío funciona igual.
+      WhatsAppCloudApi__WabaId: ${WHATSAPP_WABA_ID:-}
       WhatsAppCloudApi__AppSecret: ${WHATSAPP_APP_SECRET:-}
       WhatsAppCloudApi__WebhookVerifyToken: ${WHATSAPP_WEBHOOK_VERIFY_TOKEN:-}
       WhatsAppCloudApi__TemplateName: ${WHATSAPP_TEMPLATE_NAME:-}

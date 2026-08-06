@@ -53,7 +53,11 @@ public class TestMessageService(
             ProspectId = prospect.Id,
             Channel = MessagingChannel.Whatsapp,
             Provider = messageProvider.ProviderName,
-            Content = content,
+            // Con plantilla de Meta configurada, el proveedor manda el copy aprobado (no
+            // `content`, que es solo el texto libre de este formulario de test); si puede
+            // resolverlo, sendResult.SentContent trae ese texto real para no loguear algo
+            // engañoso.
+            Content = sendResult.SentContent ?? content,
             ExternalMessageId = sendResult.ExternalMessageId,
             Status = sendResult.Success ? MessageStatus.Sent : MessageStatus.Failed,
             SentAt = sendResult.Success ? DateTimeOffset.UtcNow : null,
