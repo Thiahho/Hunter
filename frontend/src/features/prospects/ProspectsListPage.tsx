@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router';
 import { deleteProspect, searchProspects, type ProspectCategory, type ProspectListItem, type ProspectStatus } from '../../api/prospects';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
+import { BulkSendMessageDialog } from './BulkSendMessageDialog';
 
 function buildMapsLink(prospect: ProspectListItem): string | null {
   // typeof en vez de "!== null": si el backend todavía no manda estos campos (build vieja,
@@ -80,6 +81,7 @@ export function ProspectsListPage() {
   const [page, setPage] = useState(1);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [pendingDeletion, setPendingDeletion] = useState<PendingDeletion | null>(null);
+  const [showBulkSend, setShowBulkSend] = useState(false);
 
   const { data, isLoading, isError, error } = useQuery({
     queryKey: ['prospects', { search, category, status, page }],
@@ -201,13 +203,22 @@ export function ProspectsListPage() {
           {selectedIds.size > 0 && (
             <div className="flex items-center justify-between rounded-md border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-500/10 px-4 py-2 text-sm">
               <span className="text-indigo-700 dark:text-indigo-300">{selectedIds.size} seleccionado(s)</span>
-              <button
-                type="button"
-                onClick={() => setPendingDeletion({ kind: 'bulk', ids: [...selectedIds] })}
-                className="rounded-md bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-500"
-              >
-                Borrar seleccionados
-              </button>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowBulkSend(true)}
+                  className="rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-500"
+                >
+                  Enviar mensaje
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPendingDeletion({ kind: 'bulk', ids: [...selectedIds] })}
+                  className="rounded-md bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-500"
+                >
+                  Borrar seleccionados
+                </button>
+              </div>
             </div>
           )}
 
@@ -342,6 +353,17 @@ export function ProspectsListPage() {
           isPending={deleteMutation.isPending}
           onConfirm={() => deleteMutation.mutate(pendingDeletion)}
           onCancel={() => setPendingDeletion(null)}
+        />
+      )}
+
+      {showBulkSend && (
+        <BulkSendMessageDialog
+          prospectIds={[...selectedIds]}
+          onClose={() => setShowBulkSend(false)}
+          onSent={() => {
+            setSelectedIds(new Set());
+            queryClient.invalidateQueries({ queryKey: ['prospects'] });
+          }}
         />
       )}
     </div>
