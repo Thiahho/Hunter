@@ -67,4 +67,24 @@ public class MessageTemplatesController(IMessageTemplateService templateService)
 
         return Ok(ApiResponse<bool>.Ok(true));
     }
+
+    [HttpGet("meta")]
+    public async Task<IActionResult> ListMetaTemplates(CancellationToken ct)
+    {
+        var result = await templateService.ListMetaTemplatesAsync(ct);
+        if (!result.Succeeded)
+            return BadRequest(ApiResponse<IReadOnlyList<MetaWhatsAppTemplateDto>>.Fail(result.Error!));
+
+        return Ok(ApiResponse<IReadOnlyList<MetaWhatsAppTemplateDto>>.Ok(result.Value!));
+    }
+
+    [HttpPost("meta/sync")]
+    public async Task<IActionResult> SyncFromMeta(SyncMessageTemplateFromMetaRequest request, CancellationToken ct)
+    {
+        var result = await templateService.SyncFromMetaAsync(request, ct);
+        if (!result.Succeeded)
+            return BadRequest(ApiResponse<MessageTemplateDto>.Fail(result.Error!));
+
+        return Ok(ApiResponse<MessageTemplateDto>.Ok(result.Value!));
+    }
 }

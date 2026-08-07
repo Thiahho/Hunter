@@ -6,7 +6,10 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Hunter.Application.Campaigning;
 
-public class MessageTemplateService(IHunterDbContext db, ICurrentUserService currentUser) : IMessageTemplateService
+public class MessageTemplateService(
+    IHunterDbContext db,
+    ICurrentUserService currentUser,
+    IWhatsAppTemplateCatalogClient templateCatalogClient) : IMessageTemplateService
 {
     public async Task<IReadOnlyCollection<MessageTemplateDto>> ListAsync(CancellationToken ct = default)
     {
@@ -104,6 +107,58 @@ public class MessageTemplateService(IHunterDbContext db, ICurrentUserService cur
         await db.SaveChangesAsync(ct);
 
         return Result<bool>.Success(true);
+    }
+
+    public Task<Result<IReadOnlyList<MetaWhatsAppTemplateDto>>> ListMetaTemplatesAsync(CancellationToken ct = default) =>
+        templateCatalogClient.ListApprovedAsync(ct);
+
+    public async Task<Result<MessageTemplateDto>> SyncFromMetaAsync(SyncMessageTemplateFromMetaRequest request, CancellationToken ct = default)
+    {
+        var catalogResult = await templateCatalogClient.ListApprovedAsync(ct);
+        if (!catalogResult.Succeeded)
+            return Result<MessageTemplateDto>.Failure(catalogResult.Error!);
+
+        var metaTemplate = catalogResult.Value!.FirstOrDefault(t =>
+            string.Equals(t.Name, request.Name, StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(t.Language, request.Language, StringComparison.OrdinalIgnoreCase));
+
+        if (metaTemplate is null)
+            return Result<MessageTemplateDto>.Failure("La plantilla indicada no existe en el catálogo de plantillas aprobadas de Meta.");
+
+        if (!string.Equals(metaTemplate.Status, "APPROVED", StringComparison.OrdinalIgnoreCase))
+            return Result<MessageTemplateDto>.Failure($"La plantilla '{metaTemplate.Name}' todavía no está aprobada en Meta (estado: {metaTemplate.Status}).");
+
+        var organizationId = currentUser.OrganizationId!.Value;
+
+        // Solo puede haber una plantilla de WhatsApp activa a la vez fuera del catálogo: sincronizar
+        // reemplaza la vigente en vez de acumular versiones sueltas (ver comentario en IMessageTemplateService).
+        var activeWhatsapp = await db.MessageTemplates
+            .Where(t => t.OrganizationId == organizationId && t.Channel == MessagingChannel.Whatsapp && t.IsActive && !t.IsCatalogTemplate)
+            .ToListAsync(ct);
+        foreach (var template in activeWhatsapp)
+            template.IsActive = false;
+
+        var previousVersion = activeWhatsapp
+            .Where(t => string.Equals(t.Name, metaTemplate.Name, StringComparison.OrdinalIgnoreCase))
+            .Select(t => t.Version)
+            .DefaultIfEmpty(0)
+            .Max();
+
+        var synced = new MessageTemplate
+        {
+            OrganizationId = organizationId,
+            Name = metaTemplate.Name,
+            Content = metaTemplate.BodyText ?? string.Empty,
+            Channel = MessagingChannel.Whatsapp,
+            Version = previousVersion + 1,
+            IsActive = true,
+            CreatedBy = currentUser.UserId
+        };
+
+        db.MessageTemplates.Add(synced);
+        await db.SaveChangesAsync(ct);
+
+        return Result<MessageTemplateDto>.Success(ToDto(synced));
     }
 
     private static MessageTemplateDto ToDto(MessageTemplate t) => new(t.Id, t.Name, t.Content, t.Channel, t.Version, t.IsActive, t.IsCatalogTemplate);

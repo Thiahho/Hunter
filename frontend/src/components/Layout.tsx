@@ -10,6 +10,7 @@ const navItems = [
   { to: '/app/prospects/search', label: 'Buscar prospectos' },
   { to: '/app/leads', label: 'Leads' },
   { to: '/app/messages', label: 'Mensajes' },
+  { to: '/app/templates', label: 'Plantillas' },
   { to: '/app/profile', label: 'Mi perfil' },
 ];
 

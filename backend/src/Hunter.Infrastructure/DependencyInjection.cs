@@ -49,10 +49,18 @@ public static class DependencyInjection
                 var accessToken = sp.GetRequiredService<IOptions<WhatsAppCloudApiOptions>>().Value.AccessToken;
                 client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
             });
+
+            services.AddHttpClient<IWhatsAppTemplateCatalogClient, WhatsAppTemplateCatalogClient>((sp, client) =>
+            {
+                client.BaseAddress = new Uri("https://graph.facebook.com/");
+                var accessToken = sp.GetRequiredService<IOptions<WhatsAppCloudApiOptions>>().Value.AccessToken;
+                client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+            });
         }
         else
         {
             services.AddScoped<IMessageProvider, StubMessageProvider>();
+            services.AddScoped<IWhatsAppTemplateCatalogClient, StubWhatsAppTemplateCatalogClient>();
         }
 
         services.Configure<TelegramOptions>(configuration.GetSection(TelegramOptions.SectionName));

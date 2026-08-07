@@ -9,6 +9,7 @@ import { LeadsKanbanPage } from './features/leads/LeadsKanbanPage';
 import { LeadDetailPage } from './features/leads/LeadDetailPage';
 import { UsersPage } from './features/users/UsersPage';
 import { MessagesPage } from './features/messages/MessagesPage';
+import { TemplatesPage } from './features/templates/TemplatesPage';
 import { ProfilePage } from './features/profile/ProfilePage';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { Layout } from './components/Layout';
@@ -123,6 +124,17 @@ export default function App() {
           <ProtectedRoute>
             <Layout>
               <MessagesPage />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/app/templates"
+        element={
+          <ProtectedRoute>
+            <Layout>
+              <TemplatesPage />
             </Layout>
           </ProtectedRoute>
         }

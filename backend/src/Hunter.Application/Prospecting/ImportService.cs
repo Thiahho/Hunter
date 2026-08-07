@@ -285,6 +285,15 @@ public class ImportService(
         var selectedIds = request?.SelectedRecordIds;
         var created = 0;
 
+        // ProspectDuplicateFinder (usado en el preview) sólo compara contra lo que ya está
+        // persistido en la DB, no contra otras filas del mismo batch todavía sin guardar.
+        // Dos filas "Valid" del mismo import pueden normalizar al mismo (Channel, Value)
+        // (ej. la misma sucursal aparece dos veces en una búsqueda por overlap de radios), y
+        // el índice único de ProspectContact rechazaría el segundo insert. Este set trackea
+        // los valores ya usados en esta corrida para saltear ese contacto puntual en vez de
+        // que todo el batch termine en un DbUpdateException.
+        var contactValuesInBatch = new HashSet<(ProspectContactChannel Channel, string Value)>();
+
         // selectedIds == null preserva el comportamiento de siempre (importar todos los Valid):
         // así CSV y Google Places, que no mandan este parámetro, no cambian de comportamiento.
         foreach (var record in batch.Records.Where(r => r.Status == ImportBatchRecordStatus.Valid && (selectedIds is null || selectedIds.Contains(r.Id))))
@@ -303,6 +312,9 @@ public class ImportService(
 
             foreach (var contact in normalized.Contacts)
             {
+                if (!contactValuesInBatch.Add((contact.Channel, contact.Value)))
+                    continue;
+
                 prospect.Contacts.Add(new ProspectContact
                 {
                     OrganizationId = batch.OrganizationId,
@@ -332,7 +344,15 @@ public class ImportService(
         batch.Status = ImportBatchStatus.Completed;
         batch.CompletedAt = DateTimeOffset.UtcNow;
 
-        await db.SaveChangesAsync(ct);
+        try
+        {
+            await db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException ex)
+        {
+            return Result<ImportConfirmResultDto>.Failure(
+                $"No se pudo confirmar la importación: uno o más contactos ya existen para la organización. Detalle: {ex.InnerException?.Message ?? ex.Message}");
+        }
 
         return Result<ImportConfirmResultDto>.Success(new ImportConfirmResultDto(batch.Id, batch.Status.ToString(), created));
     }
@@ -398,13 +418,21 @@ public class ImportService(
             };
         }
 
+        // Los valores se filtran por IsNullOrWhiteSpace *después* de normalizar: un teléfono
+        // basura como "N/A" o "-" no tiene dígitos y ContactValueNormalizer.NormalizePhone
+        // lo colapsa a "" (ver ContactValueNormalizer.cs). Si se dejara pasar, varias filas
+        // del mismo import terminarían con el mismo (OrganizationId, Channel, "") y violarían
+        // el índice único de ProspectContact al confirmar el batch.
         var contacts = new List<ContactInput>();
-        if (!string.IsNullOrWhiteSpace(row.phone))
-            contacts.Add(new ContactInput(ProspectContactChannel.Phone, ContactValueNormalizer.Normalize(ProspectContactChannel.Phone, row.phone)));
-        if (!string.IsNullOrWhiteSpace(row.whatsapp))
-            contacts.Add(new ContactInput(ProspectContactChannel.Whatsapp, ContactValueNormalizer.Normalize(ProspectContactChannel.Whatsapp, row.whatsapp)));
-        if (!string.IsNullOrWhiteSpace(row.email))
-            contacts.Add(new ContactInput(ProspectContactChannel.Email, ContactValueNormalizer.Normalize(ProspectContactChannel.Email, row.email)));
+        var normalizedPhone = string.IsNullOrWhiteSpace(row.phone) ? null : ContactValueNormalizer.Normalize(ProspectContactChannel.Phone, row.phone);
+        if (!string.IsNullOrWhiteSpace(normalizedPhone))
+            contacts.Add(new ContactInput(ProspectContactChannel.Phone, normalizedPhone));
+        var normalizedWhatsapp = string.IsNullOrWhiteSpace(row.whatsapp) ? null : ContactValueNormalizer.Normalize(ProspectContactChannel.Whatsapp, row.whatsapp);
+        if (!string.IsNullOrWhiteSpace(normalizedWhatsapp))
+            contacts.Add(new ContactInput(ProspectContactChannel.Whatsapp, normalizedWhatsapp));
+        var normalizedEmail = string.IsNullOrWhiteSpace(row.email) ? null : ContactValueNormalizer.Normalize(ProspectContactChannel.Email, row.email);
+        if (!string.IsNullOrWhiteSpace(normalizedEmail))
+            contacts.Add(new ContactInput(ProspectContactChannel.Email, normalizedEmail));
 
         if (contacts.Count == 0)
         {
