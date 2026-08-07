@@ -193,4 +193,144 @@ public class CampaignRecipientSearchTests
 
         Assert.Empty(result.Items);
     }
+
+    [Fact]
+    public async Task DeleteRecipient_RemovesRow_WithoutTouchingItsMessages()
+    {
+        var dbName = TestDb.NewDbName();
+        int orgId, recipientId, messageId;
+
+        await using (var db = TestDb.Create(dbName))
+        {
+            orgId = await SeedOrgAsync(db);
+
+            var template = new MessageTemplate
+            {
+                OrganizationId = orgId,
+                Name = "Plantilla",
+                Content = "Hola",
+                Channel = MessagingChannel.Whatsapp
+            };
+            db.MessageTemplates.Add(template);
+
+            var prospect = new Prospect { OrganizationId = orgId, BusinessName = "Por campaña" };
+            db.Prospects.Add(prospect);
+            await db.SaveChangesAsync();
+
+            var campaign = new Campaign
+            {
+                OrganizationId = orgId,
+                Name = "Campaña X",
+                Status = CampaignStatus.Running,
+                Channel = MessagingChannel.Whatsapp,
+                MessageTemplateId = template.Id
+            };
+            db.Campaigns.Add(campaign);
+            await db.SaveChangesAsync();
+
+            var message = new Message
+            {
+                OrganizationId = orgId,
+                ProspectId = prospect.Id,
+                CampaignId = campaign.Id,
+                Channel = MessagingChannel.Whatsapp,
+                Provider = "stub",
+                Content = "Hola",
+                Status = MessageStatus.Failed,
+                FailedAt = DateTimeOffset.UtcNow
+            };
+            db.Messages.Add(message);
+            await db.SaveChangesAsync();
+            messageId = message.Id;
+
+            var recipient = new CampaignRecipient
+            {
+                OrganizationId = orgId,
+                CampaignId = campaign.Id,
+                ProspectId = prospect.Id,
+                Status = CampaignRecipientStatus.Failed,
+                LastMessageId = message.Id
+            };
+            db.CampaignRecipients.Add(recipient);
+            await db.SaveChangesAsync();
+            recipientId = recipient.Id;
+        }
+
+        await using (var db = TestDb.Create(dbName, organizationId: orgId, userId: 1))
+        {
+            var service = CreateService(db, orgId);
+            var result = await service.DeleteRecipientAsync(recipientId);
+            Assert.True(result.Succeeded);
+        }
+
+        await using var assertDb = TestDb.Create(dbName, organizationId: orgId);
+        Assert.Empty(assertDb.CampaignRecipients);
+        Assert.Single(assertDb.Messages.Where(m => m.Id == messageId));
+    }
+
+    [Fact]
+    public async Task DeleteRecipients_Bulk_RemovesOnlyRequestedRows()
+    {
+        var dbName = TestDb.NewDbName();
+        int orgId, keepId, deleteAId, deleteBId;
+
+        await using (var db = TestDb.Create(dbName))
+        {
+            orgId = await SeedOrgAsync(db);
+
+            var template = new MessageTemplate
+            {
+                OrganizationId = orgId,
+                Name = "Plantilla",
+                Content = "Hola",
+                Channel = MessagingChannel.Whatsapp
+            };
+            db.MessageTemplates.Add(template);
+
+            var campaign = new Campaign
+            {
+                OrganizationId = orgId,
+                Name = "Campaña X",
+                Status = CampaignStatus.Running,
+                Channel = MessagingChannel.Whatsapp,
+                MessageTemplateId = template.Id
+            };
+            db.Campaigns.Add(campaign);
+
+            var prospects = new[]
+            {
+                new Prospect { OrganizationId = orgId, BusinessName = "A" },
+                new Prospect { OrganizationId = orgId, BusinessName = "B" },
+                new Prospect { OrganizationId = orgId, BusinessName = "C" }
+            };
+            db.Prospects.AddRange(prospects);
+            await db.SaveChangesAsync();
+
+            var recipients = prospects.Select(p => new CampaignRecipient
+            {
+                OrganizationId = orgId,
+                CampaignId = campaign.Id,
+                ProspectId = p.Id,
+                Status = CampaignRecipientStatus.Failed
+            }).ToArray();
+            db.CampaignRecipients.AddRange(recipients);
+            await db.SaveChangesAsync();
+
+            keepId = recipients[0].Id;
+            deleteAId = recipients[1].Id;
+            deleteBId = recipients[2].Id;
+        }
+
+        await using (var db = TestDb.Create(dbName, organizationId: orgId, userId: 1))
+        {
+            var service = CreateService(db, orgId);
+            var result = await service.DeleteRecipientsAsync([deleteAId, deleteBId]);
+            Assert.True(result.Succeeded);
+            Assert.Equal(2, result.Value);
+        }
+
+        await using var assertDb = TestDb.Create(dbName, organizationId: orgId);
+        var remaining = Assert.Single(assertDb.CampaignRecipients);
+        Assert.Equal(keepId, remaining.Id);
+    }
 }

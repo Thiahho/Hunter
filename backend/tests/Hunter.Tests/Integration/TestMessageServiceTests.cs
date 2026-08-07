@@ -136,4 +136,105 @@ public class TestMessageServiceTests
         Assert.Contains("exclusión", result.Error);
         Assert.Empty(db2.Messages);
     }
+
+    [Fact]
+    public async Task RetryAsync_FailedAdHocMessage_SendsAgainWithSameContent()
+    {
+        var dbName = TestDb.NewDbName();
+        var (orgId, prospectId) = await SeedProspectAsync(dbName);
+        int messageId;
+
+        await using (var db = TestDb.Create(dbName))
+        {
+            var message = new Message
+            {
+                OrganizationId = orgId,
+                ProspectId = prospectId,
+                CampaignId = null,
+                Channel = MessagingChannel.Whatsapp,
+                Provider = "stub",
+                Content = "Hola Prueba Personal",
+                Status = MessageStatus.Failed,
+                FailedAt = DateTimeOffset.UtcNow
+            };
+            db.Messages.Add(message);
+            await db.SaveChangesAsync();
+            messageId = message.Id;
+        }
+
+        await using var db2 = TestDb.Create(dbName, organizationId: orgId, userId: 1);
+        var service = CreateService(db2, orgId);
+        var result = await service.RetryAsync(messageId);
+
+        Assert.True(result.Succeeded);
+        Assert.True(result.Value!.Success);
+        Assert.Equal(2, db2.Messages.Count());
+        Assert.Contains(db2.Messages, m => m.Status == MessageStatus.Sent && m.Content == "Hola Prueba Personal");
+    }
+
+    [Fact]
+    public async Task RetryAsync_MessageBelongsToCampaign_Fails()
+    {
+        var dbName = TestDb.NewDbName();
+        var (orgId, prospectId) = await SeedProspectAsync(dbName);
+        int messageId;
+
+        await using (var db = TestDb.Create(dbName))
+        {
+            var message = new Message
+            {
+                OrganizationId = orgId,
+                ProspectId = prospectId,
+                CampaignId = 1,
+                Channel = MessagingChannel.Whatsapp,
+                Provider = "stub",
+                Content = "Hola",
+                Status = MessageStatus.Failed,
+                FailedAt = DateTimeOffset.UtcNow
+            };
+            db.Messages.Add(message);
+            await db.SaveChangesAsync();
+            messageId = message.Id;
+        }
+
+        await using var db2 = TestDb.Create(dbName, organizationId: orgId, userId: 1);
+        var service = CreateService(db2, orgId);
+        var result = await service.RetryAsync(messageId);
+
+        Assert.False(result.Succeeded);
+        Assert.Contains("campaña", result.Error);
+    }
+
+    [Fact]
+    public async Task RetryAsync_MessageNotFailed_Fails()
+    {
+        var dbName = TestDb.NewDbName();
+        var (orgId, prospectId) = await SeedProspectAsync(dbName);
+        int messageId;
+
+        await using (var db = TestDb.Create(dbName))
+        {
+            var message = new Message
+            {
+                OrganizationId = orgId,
+                ProspectId = prospectId,
+                CampaignId = null,
+                Channel = MessagingChannel.Whatsapp,
+                Provider = "stub",
+                Content = "Hola",
+                Status = MessageStatus.Sent,
+                SentAt = DateTimeOffset.UtcNow
+            };
+            db.Messages.Add(message);
+            await db.SaveChangesAsync();
+            messageId = message.Id;
+        }
+
+        await using var db2 = TestDb.Create(dbName, organizationId: orgId, userId: 1);
+        var service = CreateService(db2, orgId);
+        var result = await service.RetryAsync(messageId);
+
+        Assert.False(result.Succeeded);
+        Assert.Contains("Falló", result.Error);
+    }
 }

@@ -21,6 +21,8 @@ public interface ICampaignService
 
     Task<PagedResult<CampaignRecipientDto>> SearchRecipientsAsync(int? campaignId, CampaignRecipientStatus? status, int page, int pageSize, CancellationToken ct = default);
     Task<Result<RetryRecipientsResultDto>> RetryRecipientsAsync(RetryRecipientsRequest request, CancellationToken ct = default);
+    Task<Result<bool>> DeleteRecipientAsync(int id, CancellationToken ct = default);
+    Task<Result<int>> DeleteRecipientsAsync(IReadOnlyCollection<int> recipientIds, CancellationToken ct = default);
 
     Task SetKillSwitchAsync(KillSwitchRequest request, CancellationToken ct = default);
     Task<bool> IsKillSwitchEnabledAsync(CancellationToken ct = default);

@@ -118,6 +118,26 @@ public class CampaignsController(ICampaignService campaignService) : ControllerB
         return Ok(ApiResponse<RetryRecipientsResultDto>.Ok(result.Value!));
     }
 
+    [HttpDelete("recipients/{id:int}")]
+    public async Task<IActionResult> DeleteRecipient(int id, CancellationToken ct)
+    {
+        var result = await campaignService.DeleteRecipientAsync(id, ct);
+        if (!result.Succeeded)
+            return BadRequest(ApiResponse<bool>.Fail(result.Error!));
+
+        return Ok(ApiResponse<bool>.Ok(true));
+    }
+
+    [HttpPost("recipients/bulk-delete")]
+    public async Task<IActionResult> BulkDeleteRecipients(BulkDeleteMessagesRequest request, CancellationToken ct)
+    {
+        var result = await campaignService.DeleteRecipientsAsync(request.Ids, ct);
+        if (!result.Succeeded)
+            return BadRequest(ApiResponse<int>.Fail(result.Error!));
+
+        return Ok(ApiResponse<int>.Ok(result.Value));
+    }
+
     [HttpPost("kill-switch")]
     public async Task<IActionResult> SetKillSwitch(KillSwitchRequest request, CancellationToken ct)
     {

@@ -6,6 +6,7 @@ import {
   bulkDeleteMessages,
   deleteMessage,
   deleteMessageResponse,
+  retryMessage,
   searchMessageResponses,
   searchMessages,
   type IntentClassification,
@@ -14,6 +15,7 @@ import {
   type MessageStatus,
 } from '../../api/messages';
 import {
+  deleteRecipient,
   processCampaignQueue,
   retryRecipients,
   searchCampaignRecipients,
@@ -322,11 +324,40 @@ const recipientStatusLabels: Record<CampaignRecipientStatus, string> = {
 // reintentar acá porque no es algo que un reintento resuelva por sí solo (ver CampaignService.RetryRecipientsAsync).
 const notSentStatusOptions: CampaignRecipientStatus[] = ['Failed', 'Pending', 'Queued', 'Skipped', 'Stopped'];
 
+type PendingRecipientDeletion =
+  | { kind: 'single'; recipient: CampaignRecipientDto }
+  | { kind: 'bulk'; recipients: CampaignRecipientDto[] };
+
+// Reintentar un CampaignRecipient real reprocesa la cola de su Campaña; reintentar un envío
+// individual (isCampaignRecipient=false) reenvía ese Message puntual vía TestMessageService.
+async function retryOne(r: CampaignRecipientDto): Promise<void> {
+  if (r.isCampaignRecipient) {
+    await retryRecipients([r.id]);
+    if (r.campaignId !== null) {
+      for (;;) {
+        const batch = await processCampaignQueue(r.campaignId);
+        if (batch.processed === 0) break;
+      }
+    }
+  } else {
+    await retryMessage(r.id);
+  }
+}
+
+async function deleteOne(r: CampaignRecipientDto): Promise<void> {
+  if (r.isCampaignRecipient) {
+    await deleteRecipient(r.id);
+  } else {
+    await deleteMessage(r.id);
+  }
+}
+
 function NotSentTab() {
   const queryClient = useQueryClient();
   const [status, setStatus] = useState<CampaignRecipientStatus>('Failed');
   const [page, setPage] = useState(1);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [pendingDeletion, setPendingDeletion] = useState<PendingRecipientDeletion | null>(null);
 
   const query = useQuery({
     queryKey: ['campaign-recipients', { status, page }],
@@ -342,20 +373,27 @@ function NotSentTab() {
 
   const retryMutation = useMutation({
     mutationFn: async (targets: CampaignRecipientDto[]) => {
-      const result = await retryRecipients(targets.map((r) => r.id));
-
-      const campaignIds = [...new Set(targets.map((r) => r.campaignId).filter((id): id is number => id !== null))];
-      for (const campaignId of campaignIds) {
-        for (;;) {
-          const batch = await processCampaignQueue(campaignId);
-          if (batch.processed === 0) break;
-        }
+      for (const target of targets.filter((r) => r.status === 'Failed')) {
+        await retryOne(target);
       }
-
-      return result;
     },
     onSuccess: () => {
       setSelectedIds(new Set());
+      queryClient.invalidateQueries({ queryKey: ['campaign-recipients'] });
+      queryClient.invalidateQueries({ queryKey: ['messages'] });
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (target: PendingRecipientDeletion) => {
+      const targets = target.kind === 'single' ? [target.recipient] : target.recipients;
+      for (const r of targets) {
+        await deleteOne(r);
+      }
+    },
+    onSuccess: () => {
+      setSelectedIds(new Set());
+      setPendingDeletion(null);
       queryClient.invalidateQueries({ queryKey: ['campaign-recipients'] });
       queryClient.invalidateQueries({ queryKey: ['messages'] });
     },
@@ -373,15 +411,15 @@ function NotSentTab() {
   function toggleSelectAllOnPage() {
     if (!query.data) return;
     setSelectedIds((prev) => {
-      const retryable = query.data.items.filter((r) => r.status === 'Failed' && r.isCampaignRecipient);
-      const allSelected = retryable.length > 0 && retryable.every((r) => prev.has(r.id));
-      return allSelected ? new Set() : new Set(retryable.map((r) => r.id));
+      const allSelected = query.data.items.length > 0 && query.data.items.every((r) => prev.has(r.id));
+      return allSelected ? new Set() : new Set(query.data.items.map((r) => r.id));
     });
   }
 
-  const retryableOnPage = query.data?.items.filter((r) => r.status === 'Failed' && r.isCampaignRecipient) ?? [];
-  const allOnPageSelected = retryableOnPage.length > 0 && retryableOnPage.every((r) => selectedIds.has(r.id));
+  const allOnPageSelected =
+    !!query.data && query.data.items.length > 0 && query.data.items.every((r) => selectedIds.has(r.id));
   const selectedRecipients = query.data?.items.filter((r) => selectedIds.has(r.id)) ?? [];
+  const selectedRetryableCount = selectedRecipients.filter((r) => r.status === 'Failed').length;
 
   return (
     <div className="space-y-3">
@@ -422,20 +460,36 @@ function NotSentTab() {
           {retryMutation.error instanceof Error ? retryMutation.error.message : 'No se pudo reintentar el envío.'}
         </p>
       )}
+      {deleteMutation.isError && (
+        <p className="text-sm text-red-600 dark:text-red-400">
+          {deleteMutation.error instanceof Error ? deleteMutation.error.message : 'No se pudo borrar.'}
+        </p>
+      )}
 
       {query.data && (
         <>
           {selectedIds.size > 0 && (
             <div className="flex items-center justify-between rounded-md border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-500/10 px-4 py-2 text-sm">
               <span className="text-indigo-700 dark:text-indigo-300">{selectedIds.size} seleccionado(s)</span>
-              <button
-                type="button"
-                onClick={() => retryMutation.mutate(selectedRecipients)}
-                disabled={retryMutation.isPending}
-                className="rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-500 disabled:opacity-60"
-              >
-                {retryMutation.isPending ? 'Reintentando…' : 'Reintentar seleccionados'}
-              </button>
+              <div className="flex items-center gap-2">
+                {selectedRetryableCount > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => retryMutation.mutate(selectedRecipients)}
+                    disabled={retryMutation.isPending}
+                    className="rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-500 disabled:opacity-60"
+                  >
+                    {retryMutation.isPending ? 'Reintentando…' : `Reintentar seleccionados (${selectedRetryableCount})`}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setPendingDeletion({ kind: 'bulk', recipients: selectedRecipients })}
+                  className="rounded-md bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-500"
+                >
+                  Eliminar seleccionados
+                </button>
+              </div>
             </div>
           )}
 
@@ -448,8 +502,7 @@ function NotSentTab() {
                       type="checkbox"
                       checked={allOnPageSelected}
                       onChange={toggleSelectAllOnPage}
-                      disabled={retryableOnPage.length === 0}
-                      aria-label="Seleccionar todos los reintentables de esta página"
+                      aria-label="Seleccionar todos los de esta página"
                       className="rounded border-slate-300 dark:border-slate-700"
                     />
                   </th>
@@ -469,7 +522,6 @@ function NotSentTab() {
                         type="checkbox"
                         checked={selectedIds.has(r.id)}
                         onChange={() => toggleSelected(r.id)}
-                        disabled={r.status !== 'Failed' || !r.isCampaignRecipient}
                         aria-label={`Seleccionar destinatario ${r.prospectBusinessName}`}
                         className="rounded border-slate-300 dark:border-slate-700"
                       />
@@ -498,16 +550,26 @@ function NotSentTab() {
                       {r.lastAttemptAt ? new Date(r.lastAttemptAt).toLocaleString('es-AR') : '—'}
                     </td>
                     <td className="px-4 py-2">
-                      {r.status === 'Failed' && r.isCampaignRecipient && (
+                      <div className="flex items-center gap-3">
+                        {r.status === 'Failed' && (
+                          <button
+                            type="button"
+                            onClick={() => retryMutation.mutate([r])}
+                            disabled={retryMutation.isPending}
+                            className="text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:underline disabled:opacity-60"
+                          >
+                            Reintentar
+                          </button>
+                        )}
                         <button
                           type="button"
-                          onClick={() => retryMutation.mutate([r])}
-                          disabled={retryMutation.isPending}
-                          className="text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:underline disabled:opacity-60"
+                          onClick={() => setPendingDeletion({ kind: 'single', recipient: r })}
+                          disabled={deleteMutation.isPending}
+                          className="text-xs font-medium text-red-600 dark:text-red-400 hover:underline disabled:opacity-60"
                         >
-                          Reintentar
+                          Eliminar
                         </button>
-                      )}
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -523,6 +585,22 @@ function NotSentTab() {
           </div>
           <Pager page={query.data.page} totalPages={query.data.totalPages} onChange={changePage} />
         </>
+      )}
+
+      {pendingDeletion && (
+        <ConfirmDialog
+          title={pendingDeletion.kind === 'single' ? 'Eliminar destinatario' : 'Eliminar seleccionados'}
+          message={
+            pendingDeletion.kind === 'single'
+              ? `¿Eliminar a "${pendingDeletion.recipient.prospectBusinessName}" de esta lista? Esta acción no se puede deshacer.`
+              : `¿Eliminar ${pendingDeletion.recipients.length} destinatario(s) seleccionado(s)? Esta acción no se puede deshacer.`
+          }
+          confirmLabel="Eliminar"
+          danger
+          isPending={deleteMutation.isPending}
+          onConfirm={() => deleteMutation.mutate(pendingDeletion)}
+          onCancel={() => setPendingDeletion(null)}
+        />
       )}
     </div>
   );

@@ -377,6 +377,33 @@ public class CampaignService(
         return Result<RetryRecipientsResultDto>.Success(new RetryRecipientsResultDto(retried, skipped));
     }
 
+    // Solo saca al destinatario de la campaña (ej. para limpiar la lista de "No enviados"); no
+    // toca los Message que ya se hayan generado para él, igual que Borrar en la pestaña
+    // "Enviados" no afecta el historial de Costos (son registros independientes a propósito).
+    public async Task<Result<bool>> DeleteRecipientAsync(int id, CancellationToken ct = default)
+    {
+        var recipient = await db.CampaignRecipients.FirstOrDefaultAsync(r => r.Id == id, ct);
+        if (recipient is null)
+            return Result<bool>.Failure("Destinatario no encontrado.");
+
+        db.CampaignRecipients.Remove(recipient);
+        await db.SaveChangesAsync(ct);
+
+        return Result<bool>.Success(true);
+    }
+
+    public async Task<Result<int>> DeleteRecipientsAsync(IReadOnlyCollection<int> recipientIds, CancellationToken ct = default)
+    {
+        if (recipientIds.Count == 0)
+            return Result<int>.Success(0);
+
+        var recipients = await db.CampaignRecipients.Where(r => recipientIds.Contains(r.Id)).ToListAsync(ct);
+        db.CampaignRecipients.RemoveRange(recipients);
+        await db.SaveChangesAsync(ct);
+
+        return Result<int>.Success(recipients.Count);
+    }
+
     public async Task SetKillSwitchAsync(KillSwitchRequest request, CancellationToken ct = default)
     {
         var organizationId = currentUser.OrganizationId!.Value;

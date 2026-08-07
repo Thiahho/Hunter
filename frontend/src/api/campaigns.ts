@@ -169,3 +169,18 @@ export async function retryRecipients(recipientIds: number[]): Promise<RetryReci
   }
   return response.data.data;
 }
+
+export async function deleteRecipient(id: number): Promise<void> {
+  const response = await apiClient.delete<ApiResponse<boolean>>(`/campaigns/recipients/${id}`);
+  if (!response.data.success) {
+    throw new Error(response.data.message ?? 'No se pudo borrar el destinatario.');
+  }
+}
+
+export async function bulkDeleteRecipients(ids: number[]): Promise<number> {
+  const response = await apiClient.post<ApiResponse<number>>('/campaigns/recipients/bulk-delete', { ids });
+  if (!response.data.success || response.data.data === null) {
+    throw new Error(response.data.message ?? 'No se pudieron borrar los destinatarios.');
+  }
+  return response.data.data;
+}

@@ -10,7 +10,10 @@ namespace Hunter.Api.Controllers;
 [ApiController]
 [Authorize]
 [Route("api/v1/messages")]
-public class MessagesController(IMessageQueryService messageQueryService, IMessageResponseQueryService messageResponseQueryService) : ControllerBase
+public class MessagesController(
+    IMessageQueryService messageQueryService,
+    IMessageResponseQueryService messageResponseQueryService,
+    ITestMessageService testMessageService) : ControllerBase
 {
     [HttpGet]
     public async Task<IActionResult> Search(
@@ -39,6 +42,16 @@ public class MessagesController(IMessageQueryService messageQueryService, IMessa
     {
         var result = await messageResponseQueryService.SearchAsync(campaignId, prospectId, classification, page, pageSize, ct);
         return Ok(ApiResponse<PagedResult<MessageResponseDto>>.Ok(result));
+    }
+
+    [HttpPost("{id:int}/retry")]
+    public async Task<IActionResult> Retry(int id, CancellationToken ct)
+    {
+        var result = await testMessageService.RetryAsync(id, ct);
+        if (!result.Succeeded)
+            return BadRequest(ApiResponse<TestMessageResultDto>.Fail(result.Error!));
+
+        return Ok(ApiResponse<TestMessageResultDto>.Ok(result.Value!));
     }
 
     [HttpDelete("{id:int}")]

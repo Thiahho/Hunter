@@ -74,6 +74,19 @@ public class TestMessageService(
             new TestMessageResultDto(message.Id, sendResult.Success, sendResult.ExternalMessageId, sendResult.Error));
     }
 
+    public async Task<Result<TestMessageResultDto>> RetryAsync(int messageId, CancellationToken ct = default)
+    {
+        var message = await db.Messages.FirstOrDefaultAsync(m => m.Id == messageId, ct);
+        if (message is null)
+            return Result<TestMessageResultDto>.Failure("Mensaje no encontrado.");
+        if (message.CampaignId is not null)
+            return Result<TestMessageResultDto>.Failure("Los mensajes de campaña se reintentan desde \"No enviados\" con el reintento por campaña.");
+        if (message.Status != MessageStatus.Failed)
+            return Result<TestMessageResultDto>.Failure("Solo se pueden reintentar mensajes en estado Falló.");
+
+        return await SendAsync(message.ProspectId, new SendTestMessageRequest(message.Content), ct);
+    }
+
     private async Task<bool> IsKillSwitchEnabledAsync(int organizationId, CancellationToken ct)
     {
         var value = await db.OrganizationSettings

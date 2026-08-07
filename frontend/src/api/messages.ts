@@ -70,6 +70,21 @@ export async function searchMessageResponses(query: MessageResponseQuery): Promi
   return response.data.data;
 }
 
+export interface TestMessageResultDto {
+  messageId: number;
+  success: boolean;
+  externalMessageId: string | null;
+  error: string | null;
+}
+
+export async function retryMessage(id: number): Promise<TestMessageResultDto> {
+  const response = await apiClient.post<ApiResponse<TestMessageResultDto>>(`/messages/${id}/retry`);
+  if (!response.data.success || !response.data.data) {
+    throw new Error(response.data.message ?? 'No se pudo reintentar el envío.');
+  }
+  return response.data.data;
+}
+
 export async function deleteMessage(id: number): Promise<void> {
   const response = await apiClient.delete<ApiResponse<boolean>>(`/messages/${id}`);
   if (!response.data.success) {
