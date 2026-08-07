@@ -99,6 +99,25 @@ public class CampaignsController(ICampaignService campaignService) : ControllerB
         return Ok(ApiResponse<ProcessQueueResultDto>.Ok(result.Value!));
     }
 
+    [HttpGet("recipients")]
+    public async Task<IActionResult> SearchRecipients(
+        [FromQuery] int? campaignId, [FromQuery] CampaignRecipientStatus? status,
+        [FromQuery] int page = 1, [FromQuery] int pageSize = 50, CancellationToken ct = default)
+    {
+        var result = await campaignService.SearchRecipientsAsync(campaignId, status, page, pageSize, ct);
+        return Ok(ApiResponse<PagedResult<CampaignRecipientDto>>.Ok(result));
+    }
+
+    [HttpPost("recipients/retry")]
+    public async Task<IActionResult> RetryRecipients(RetryRecipientsRequest request, CancellationToken ct)
+    {
+        var result = await campaignService.RetryRecipientsAsync(request, ct);
+        if (!result.Succeeded)
+            return BadRequest(ApiResponse<RetryRecipientsResultDto>.Fail(result.Error!));
+
+        return Ok(ApiResponse<RetryRecipientsResultDto>.Ok(result.Value!));
+    }
+
     [HttpPost("kill-switch")]
     public async Task<IActionResult> SetKillSwitch(KillSwitchRequest request, CancellationToken ct)
     {

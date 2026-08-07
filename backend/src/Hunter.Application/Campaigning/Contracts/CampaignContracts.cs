@@ -57,3 +57,20 @@ public record AddRecipientsResultDto(int Added, int AlreadyInCampaign, int Witho
 public record ProcessQueueResultDto(int Processed, int Sent, int Failed, int Suppressed);
 
 public record KillSwitchRequest(bool Enabled, string? Reason);
+
+public record CampaignRecipientDto(
+    int Id,
+    int CampaignId,
+    string CampaignName,
+    int ProspectId,
+    string ProspectBusinessName,
+    CampaignRecipientStatus Status,
+    int Attempts,
+    DateTimeOffset? LastAttemptAt,
+    string? LastMessageFailureReason,
+    DateTimeOffset? LastMessageFailedAt,
+    DateTimeOffset CreatedAt);
+
+public record RetryRecipientsRequest(IReadOnlyCollection<int> RecipientIds);
+
+public record RetryRecipientsResultDto(int Retried, int Skipped);

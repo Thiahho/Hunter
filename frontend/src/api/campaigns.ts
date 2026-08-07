@@ -67,6 +67,45 @@ export interface ProcessQueueResultDto {
   suppressed: number;
 }
 
+export type CampaignRecipientStatus =
+  | 'Pending'
+  | 'Queued'
+  | 'Sent'
+  | 'Delivered'
+  | 'Responded'
+  | 'Interested'
+  | 'NotInterested'
+  | 'Stopped'
+  | 'Skipped'
+  | 'Failed'
+  | 'Completed';
+
+export interface CampaignRecipientDto {
+  id: number;
+  campaignId: number;
+  campaignName: string;
+  prospectId: number;
+  prospectBusinessName: string;
+  status: CampaignRecipientStatus;
+  attempts: number;
+  lastAttemptAt: string | null;
+  lastMessageFailureReason: string | null;
+  lastMessageFailedAt: string | null;
+  createdAt: string;
+}
+
+export interface CampaignRecipientQuery {
+  campaignId?: number;
+  status?: CampaignRecipientStatus;
+  page?: number;
+  pageSize?: number;
+}
+
+export interface RetryRecipientsResultDto {
+  retried: number;
+  skipped: number;
+}
+
 export async function searchCampaigns(query: CampaignQuery = {}): Promise<PagedResult<CampaignListItem>> {
   const response = await apiClient.get<ApiResponse<PagedResult<CampaignListItem>>>('/campaigns', { params: query });
   if (!response.data.success || !response.data.data) {
@@ -108,6 +147,22 @@ export async function processCampaignQueue(campaignId: number, batchSize = 50): 
   );
   if (!response.data.success || !response.data.data) {
     throw new Error(response.data.message ?? 'No se pudo procesar la cola de envío.');
+  }
+  return response.data.data;
+}
+
+export async function searchCampaignRecipients(query: CampaignRecipientQuery = {}): Promise<PagedResult<CampaignRecipientDto>> {
+  const response = await apiClient.get<ApiResponse<PagedResult<CampaignRecipientDto>>>('/campaigns/recipients', { params: query });
+  if (!response.data.success || !response.data.data) {
+    throw new Error(response.data.message ?? 'No se pudieron obtener los destinatarios.');
+  }
+  return response.data.data;
+}
+
+export async function retryRecipients(recipientIds: number[]): Promise<RetryRecipientsResultDto> {
+  const response = await apiClient.post<ApiResponse<RetryRecipientsResultDto>>('/campaigns/recipients/retry', { recipientIds });
+  if (!response.data.success || !response.data.data) {
+    throw new Error(response.data.message ?? 'No se pudo reintentar el envío.');
   }
   return response.data.data;
 }

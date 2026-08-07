@@ -273,6 +273,74 @@ public class CampaignService(
         return Result<ProcessQueueResultDto>.Success(new ProcessQueueResultDto(recipients.Count, sent, failed, suppressed));
     }
 
+    public async Task<PagedResult<CampaignRecipientDto>> SearchRecipientsAsync(
+        int? campaignId, CampaignRecipientStatus? status, int page, int pageSize, CancellationToken ct = default)
+    {
+        page = page < 1 ? 1 : page;
+        pageSize = pageSize is < 1 or > 200 ? 50 : pageSize;
+
+        var recipients = db.CampaignRecipients.AsQueryable();
+        if (campaignId is not null)
+            recipients = recipients.Where(r => r.CampaignId == campaignId);
+        if (status is not null)
+            recipients = recipients.Where(r => r.Status == status);
+
+        var totalItems = await recipients.CountAsync(ct);
+
+        var items = await recipients
+            .OrderByDescending(r => r.UpdatedAt)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .Select(r => new CampaignRecipientDto(
+                r.Id,
+                r.CampaignId,
+                r.Campaign.Name,
+                r.ProspectId,
+                r.Prospect.BusinessName,
+                r.Status,
+                r.Attempts,
+                r.LastAttemptAt,
+                db.Messages.Where(m => m.Id == r.LastMessageId).Select(m => m.FailureReason).FirstOrDefault(),
+                db.Messages.Where(m => m.Id == r.LastMessageId).Select(m => m.FailedAt).FirstOrDefault(),
+                r.CreatedAt))
+            .ToListAsync(ct);
+
+        return new PagedResult<CampaignRecipientDto> { Items = items, Page = page, PageSize = pageSize, TotalItems = totalItems };
+    }
+
+    // Solo reintenta destinatarios en estado Failed (un envío que se intentó y falló), de
+    // campañas que todavía admiten envíos. Los Skipped (sin contacto válido) y Stopped
+    // (suprimidos/opt-out) quedan afuera a propósito: Skipped se resuelve cargando el contacto,
+    // no con un reintento; Stopped no debe reintentarse nunca, sería pisar una baja/suppression.
+    // No pisa el resto de recipient.Attempts/LastAttemptAt acá: eso lo actualiza ProcessQueueAsync
+    // en el próximo intento real de envío, este método solo vuelve a poner al recipient en cola.
+    public async Task<Result<RetryRecipientsResultDto>> RetryRecipientsAsync(RetryRecipientsRequest request, CancellationToken ct = default)
+    {
+        var recipients = await db.CampaignRecipients
+            .Include(r => r.Campaign)
+            .Where(r => request.RecipientIds.Contains(r.Id))
+            .ToListAsync(ct);
+
+        var retried = 0;
+        foreach (var recipient in recipients)
+        {
+            if (recipient.Status != CampaignRecipientStatus.Failed)
+                continue;
+            if (recipient.Campaign.Status is CampaignStatus.Completed or CampaignStatus.Cancelled)
+                continue;
+
+            recipient.Status = CampaignRecipientStatus.Pending;
+            recipient.UpdatedAt = DateTimeOffset.UtcNow;
+            retried++;
+        }
+
+        var skipped = request.RecipientIds.Count - retried;
+
+        await db.SaveChangesAsync(ct);
+
+        return Result<RetryRecipientsResultDto>.Success(new RetryRecipientsResultDto(retried, skipped));
+    }
+
     public async Task SetKillSwitchAsync(KillSwitchRequest request, CancellationToken ct = default)
     {
         var organizationId = currentUser.OrganizationId!.Value;

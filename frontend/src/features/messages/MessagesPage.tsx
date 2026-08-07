@@ -13,6 +13,13 @@ import {
   type MessageResponseDto,
   type MessageStatus,
 } from '../../api/messages';
+import {
+  processCampaignQueue,
+  retryRecipients,
+  searchCampaignRecipients,
+  type CampaignRecipientDto,
+  type CampaignRecipientStatus,
+} from '../../api/campaigns';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 
 function formatCost(cost: number | null, currency: string | null): string {
@@ -296,6 +303,229 @@ function SentMessagesTab() {
   );
 }
 
+const recipientStatusLabels: Record<CampaignRecipientStatus, string> = {
+  Pending: 'Pendiente',
+  Queued: 'En cola',
+  Sent: 'Enviado',
+  Delivered: 'Entregado',
+  Responded: 'Respondió',
+  Interested: 'Interesado',
+  NotInterested: 'No interesado',
+  Stopped: 'Excluido (opt-out)',
+  Skipped: 'Sin contacto',
+  Failed: 'Falló',
+  Completed: 'Completado',
+};
+
+// Solo los estados que significan "no se envió (todavía)": Sent/Delivered/etc. ya tienen su
+// lugar en la pestaña "Enviados". Stopped (opt-out) y Skipped (sin contacto) no tienen botón de
+// reintentar acá porque no es algo que un reintento resuelva por sí solo (ver CampaignService.RetryRecipientsAsync).
+const notSentStatusOptions: CampaignRecipientStatus[] = ['Failed', 'Pending', 'Queued', 'Skipped', 'Stopped'];
+
+function NotSentTab() {
+  const queryClient = useQueryClient();
+  const [status, setStatus] = useState<CampaignRecipientStatus>('Failed');
+  const [page, setPage] = useState(1);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+
+  const query = useQuery({
+    queryKey: ['campaign-recipients', { status, page }],
+    queryFn: () => searchCampaignRecipients({ status, page, pageSize: PAGE_SIZE }),
+    placeholderData: (previous) => previous,
+    refetchInterval: 15000,
+  });
+
+  function changePage(next: number) {
+    setPage(next);
+    setSelectedIds(new Set());
+  }
+
+  const retryMutation = useMutation({
+    mutationFn: async (targets: CampaignRecipientDto[]) => {
+      const result = await retryRecipients(targets.map((r) => r.id));
+
+      const campaignIds = [...new Set(targets.map((r) => r.campaignId))];
+      for (const campaignId of campaignIds) {
+        for (;;) {
+          const batch = await processCampaignQueue(campaignId);
+          if (batch.processed === 0) break;
+        }
+      }
+
+      return result;
+    },
+    onSuccess: () => {
+      setSelectedIds(new Set());
+      queryClient.invalidateQueries({ queryKey: ['campaign-recipients'] });
+      queryClient.invalidateQueries({ queryKey: ['messages'] });
+    },
+  });
+
+  function toggleSelected(id: number) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleSelectAllOnPage() {
+    if (!query.data) return;
+    setSelectedIds((prev) => {
+      const retryable = query.data.items.filter((r) => r.status === 'Failed');
+      const allSelected = retryable.length > 0 && retryable.every((r) => prev.has(r.id));
+      return allSelected ? new Set() : new Set(retryable.map((r) => r.id));
+    });
+  }
+
+  const retryableOnPage = query.data?.items.filter((r) => r.status === 'Failed') ?? [];
+  const allOnPageSelected = retryableOnPage.length > 0 && retryableOnPage.every((r) => selectedIds.has(r.id));
+  const selectedRecipients = query.data?.items.filter((r) => selectedIds.has(r.id)) ?? [];
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-2">
+        <select
+          value={status}
+          onChange={(e) => {
+            setStatus(e.target.value as CampaignRecipientStatus);
+            changePage(1);
+          }}
+          className={selectClass}
+        >
+          {notSentStatusOptions.map((s) => (
+            <option key={s} value={s}>
+              {recipientStatusLabels[s]}
+            </option>
+          ))}
+        </select>
+        <button
+          type="button"
+          onClick={() => query.refetch()}
+          disabled={query.isFetching}
+          className="rounded-md border border-slate-300 dark:border-slate-700 px-3 py-1.5 text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-60"
+        >
+          {query.isFetching ? 'Actualizando…' : 'Actualizar'}
+        </button>
+        <span className="text-xs text-slate-400">Se actualiza solo cada 15s</span>
+      </div>
+
+      {query.isLoading && <p className="text-sm text-slate-500 dark:text-slate-400">Cargando...</p>}
+      {query.isError && (
+        <p className="text-sm text-red-600 dark:text-red-400">
+          {query.error instanceof Error ? query.error.message : 'No se pudieron cargar los destinatarios.'}
+        </p>
+      )}
+      {retryMutation.isError && (
+        <p className="text-sm text-red-600 dark:text-red-400">
+          {retryMutation.error instanceof Error ? retryMutation.error.message : 'No se pudo reintentar el envío.'}
+        </p>
+      )}
+
+      {query.data && (
+        <>
+          {selectedIds.size > 0 && (
+            <div className="flex items-center justify-between rounded-md border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-500/10 px-4 py-2 text-sm">
+              <span className="text-indigo-700 dark:text-indigo-300">{selectedIds.size} seleccionado(s)</span>
+              <button
+                type="button"
+                onClick={() => retryMutation.mutate(selectedRecipients)}
+                disabled={retryMutation.isPending}
+                className="rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-500 disabled:opacity-60"
+              >
+                {retryMutation.isPending ? 'Reintentando…' : 'Reintentar seleccionados'}
+              </button>
+            </div>
+          )}
+
+          <div className="overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-800">
+            <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-800 text-sm">
+              <thead className="bg-slate-50 dark:bg-slate-900">
+                <tr>
+                  <th className="px-4 py-2 text-left">
+                    <input
+                      type="checkbox"
+                      checked={allOnPageSelected}
+                      onChange={toggleSelectAllOnPage}
+                      disabled={retryableOnPage.length === 0}
+                      aria-label="Seleccionar todos los reintentables de esta página"
+                      className="rounded border-slate-300 dark:border-slate-700"
+                    />
+                  </th>
+                  <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">Destinatario</th>
+                  <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">Campaña</th>
+                  <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">Estado</th>
+                  <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">Intentos</th>
+                  <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">Último intento</th>
+                  <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">Acciones</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800 bg-white dark:bg-slate-950">
+                {query.data.items.map((r) => (
+                  <tr key={r.id} className="hover:bg-slate-50 dark:hover:bg-slate-900">
+                    <td className="px-4 py-2">
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.has(r.id)}
+                        onChange={() => toggleSelected(r.id)}
+                        disabled={r.status !== 'Failed'}
+                        aria-label={`Seleccionar destinatario ${r.prospectBusinessName}`}
+                        className="rounded border-slate-300 dark:border-slate-700"
+                      />
+                    </td>
+                    <td className="px-4 py-2">
+                      <Link
+                        to={`/app/prospects/${r.prospectId}`}
+                        className="font-medium text-indigo-600 dark:text-indigo-400 hover:underline"
+                      >
+                        {r.prospectBusinessName}
+                      </Link>
+                    </td>
+                    <td className="px-4 py-2 text-slate-600 dark:text-slate-300">{r.campaignName}</td>
+                    <td className="px-4 py-2">
+                      <span className="text-slate-600 dark:text-slate-300">{recipientStatusLabels[r.status]}</span>
+                      {r.status === 'Failed' && r.lastMessageFailureReason && (
+                        <p className="text-xs text-red-500 dark:text-red-400" title={r.lastMessageFailureReason}>
+                          {r.lastMessageFailureReason}
+                        </p>
+                      )}
+                    </td>
+                    <td className="px-4 py-2 text-slate-600 dark:text-slate-300">{r.attempts}</td>
+                    <td className="px-4 py-2 text-slate-600 dark:text-slate-300">
+                      {r.lastAttemptAt ? new Date(r.lastAttemptAt).toLocaleString('es-AR') : '—'}
+                    </td>
+                    <td className="px-4 py-2">
+                      {r.status === 'Failed' && (
+                        <button
+                          type="button"
+                          onClick={() => retryMutation.mutate([r])}
+                          disabled={retryMutation.isPending}
+                          className="text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:underline disabled:opacity-60"
+                        >
+                          Reintentar
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+                {query.data.items.length === 0 && (
+                  <tr>
+                    <td colSpan={7} className="px-4 py-6 text-center text-slate-400">
+                      Sin destinatarios en este estado.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+          <Pager page={query.data.page} totalPages={query.data.totalPages} onChange={changePage} />
+        </>
+      )}
+    </div>
+  );
+}
+
 type PendingResponseDeletion =
   | { kind: 'single'; response: MessageResponseDto }
   | { kind: 'bulk'; responses: MessageResponseDto[] };
@@ -507,7 +737,7 @@ function ResponsesTab() {
 }
 
 export function MessagesPage() {
-  const [tab, setTab] = useState<'sent' | 'responses'>('sent');
+  const [tab, setTab] = useState<'sent' | 'responses' | 'not-sent'>('sent');
 
   const tabClass = (active: boolean) =>
     `rounded-md px-3 py-1.5 text-sm font-medium ${
@@ -521,8 +751,9 @@ export function MessagesPage() {
       <div>
         <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Mensajes</h2>
         <p className="text-sm text-slate-500 dark:text-slate-400">
-          A quién se le envió cada mensaje y su estado, y las respuestas recibidas (texto libre o botón "Estoy
-          interesado") con la clasificación que les asignó el sistema.
+          A quién se le envió cada mensaje y su estado, quiénes todavía no recibieron el suyo (con opción de
+          reintentar), y las respuestas recibidas (texto libre o botón "Estoy interesado") con la clasificación que
+          les asignó el sistema.
         </p>
       </div>
 
@@ -530,12 +761,17 @@ export function MessagesPage() {
         <button className={tabClass(tab === 'sent')} onClick={() => setTab('sent')}>
           Enviados
         </button>
+        <button className={tabClass(tab === 'not-sent')} onClick={() => setTab('not-sent')}>
+          No enviados
+        </button>
         <button className={tabClass(tab === 'responses')} onClick={() => setTab('responses')}>
           Respuestas
         </button>
       </div>
 
-      {tab === 'sent' ? <SentMessagesTab /> : <ResponsesTab />}
+      {tab === 'sent' && <SentMessagesTab />}
+      {tab === 'not-sent' && <NotSentTab />}
+      {tab === 'responses' && <ResponsesTab />}
     </div>
   );
 }

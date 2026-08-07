@@ -19,6 +19,9 @@ public interface ICampaignService
 
     Task<Result<ProcessQueueResultDto>> ProcessQueueAsync(int campaignId, int batchSize = 50, CancellationToken ct = default);
 
+    Task<PagedResult<CampaignRecipientDto>> SearchRecipientsAsync(int? campaignId, CampaignRecipientStatus? status, int page, int pageSize, CancellationToken ct = default);
+    Task<Result<RetryRecipientsResultDto>> RetryRecipientsAsync(RetryRecipientsRequest request, CancellationToken ct = default);
+
     Task SetKillSwitchAsync(KillSwitchRequest request, CancellationToken ct = default);
     Task<bool> IsKillSwitchEnabledAsync(CancellationToken ct = default);
 }
