@@ -23,6 +23,7 @@ import {
   type CampaignRecipientStatus,
 } from '../../api/campaigns';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
+import { LiveRefreshLabel } from '../../components/LiveRefreshLabel';
 
 function formatCost(cost: number | null, currency: string | null): string {
   if (cost === null) return `0 ${currency ?? 'ARS'}`;
@@ -176,7 +177,7 @@ function SentMessagesTab() {
         >
           {query.isFetching ? 'Actualizando…' : 'Actualizar'}
         </button>
-        <span className="text-xs text-slate-400">Se actualiza solo cada 15s</span>
+        <LiveRefreshLabel intervalSeconds={15} lastUpdatedAt={query.dataUpdatedAt} />
       </div>
 
       {query.isLoading && <p className="text-sm text-slate-500 dark:text-slate-400">Cargando...</p>}
@@ -446,7 +447,7 @@ function NotSentTab() {
         >
           {query.isFetching ? 'Actualizando…' : 'Actualizar'}
         </button>
-        <span className="text-xs text-slate-400">Se actualiza solo cada 15s</span>
+        <LiveRefreshLabel intervalSeconds={15} lastUpdatedAt={query.dataUpdatedAt} />
       </div>
 
       {query.isLoading && <p className="text-sm text-slate-500 dark:text-slate-400">Cargando...</p>}
@@ -691,7 +692,7 @@ function ResponsesTab() {
         >
           {query.isFetching ? 'Actualizando…' : 'Actualizar'}
         </button>
-        <span className="text-xs text-slate-400">Se actualiza solo cada 15s</span>
+        <LiveRefreshLabel intervalSeconds={15} lastUpdatedAt={query.dataUpdatedAt} />
       </div>
 
       {query.isLoading && <p className="text-sm text-slate-500 dark:text-slate-400">Cargando...</p>}

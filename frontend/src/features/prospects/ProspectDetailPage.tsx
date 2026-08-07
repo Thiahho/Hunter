@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useParams } from 'react-router';
 import { useAuthStore } from '../../store/authStore';
+import { LiveRefreshLabel } from '../../components/LiveRefreshLabel';
 import {
   addProspectContact,
   fetchProspectById,
@@ -574,7 +575,10 @@ function ConversationSection({ prospectId }: { prospectId: number }) {
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-end gap-2">
-        <span className="text-xs text-slate-400">Se actualiza solo cada 15s</span>
+        <LiveRefreshLabel
+          intervalSeconds={15}
+          lastUpdatedAt={Math.min(messagesQuery.dataUpdatedAt, responsesQuery.dataUpdatedAt)}
+        />
         <button
           type="button"
           onClick={refreshNow}
