@@ -34,6 +34,7 @@ public interface IHunterDbContext
     DbSet<Message> Messages { get; }
     DbSet<MessageResponse> MessageResponses { get; }
     DbSet<Suppression> Suppressions { get; }
+    DbSet<ScheduledMessage> ScheduledMessages { get; }
 
     DbSet<Lead> Leads { get; }
     DbSet<LeadActivity> LeadActivities { get; }

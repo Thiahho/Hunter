@@ -43,6 +43,7 @@ public class HunterDbContext : DbContext, IHunterDbContext
     public DbSet<Message> Messages => Set<Message>();
     public DbSet<MessageResponse> MessageResponses => Set<MessageResponse>();
     public DbSet<Suppression> Suppressions => Set<Suppression>();
+    public DbSet<ScheduledMessage> ScheduledMessages => Set<ScheduledMessage>();
 
     public DbSet<Lead> Leads => Set<Lead>();
     public DbSet<LeadActivity> LeadActivities => Set<LeadActivity>();
@@ -104,6 +105,9 @@ public class HunterDbContext : DbContext, IHunterDbContext
             .HasQueryFilter(m => m.OrganizationId == CurrentOrganizationId);
 
         modelBuilder.Entity<Suppression>()
+            .HasQueryFilter(s => s.OrganizationId == CurrentOrganizationId);
+
+        modelBuilder.Entity<ScheduledMessage>()
             .HasQueryFilter(s => s.OrganizationId == CurrentOrganizationId);
 
         modelBuilder.Entity<Lead>()

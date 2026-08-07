@@ -12,7 +12,10 @@ namespace Hunter.Api.Controllers;
 [ApiController]
 [Authorize]
 [Route("api/v1/prospects")]
-public class ProspectsController(IProspectService prospectService, ITestMessageService testMessageService) : ControllerBase
+public class ProspectsController(
+    IProspectService prospectService,
+    ITestMessageService testMessageService,
+    IScheduledMessageService scheduledMessageService) : ControllerBase
 {
     [HttpGet]
     public async Task<IActionResult> Search(
@@ -81,6 +84,33 @@ public class ProspectsController(IProspectService prospectService, ITestMessageS
             return BadRequest(ApiResponse<TestMessageResultDto>.Fail(result.Error!));
 
         return Ok(ApiResponse<TestMessageResultDto>.Ok(result.Value!));
+    }
+
+    [HttpGet("{id:int}/scheduled-messages")]
+    public async Task<IActionResult> ListScheduledMessages(int id, CancellationToken ct)
+    {
+        var result = await scheduledMessageService.ListByProspectAsync(id, ct);
+        return Ok(ApiResponse<IReadOnlyCollection<ScheduledMessageDto>>.Ok(result));
+    }
+
+    [HttpPost("{id:int}/scheduled-messages")]
+    public async Task<IActionResult> ScheduleMessage(int id, ScheduleMessageRequest request, CancellationToken ct)
+    {
+        var result = await scheduledMessageService.CreateAsync(id, request, ct);
+        if (!result.Succeeded)
+            return BadRequest(ApiResponse<ScheduledMessageDto>.Fail(result.Error!));
+
+        return Ok(ApiResponse<ScheduledMessageDto>.Ok(result.Value!));
+    }
+
+    [HttpPost("scheduled-messages/{scheduledMessageId:int}/cancel")]
+    public async Task<IActionResult> CancelScheduledMessage(int scheduledMessageId, CancellationToken ct)
+    {
+        var result = await scheduledMessageService.CancelAsync(scheduledMessageId, ct);
+        if (!result.Succeeded)
+            return BadRequest(ApiResponse<bool>.Fail(result.Error!));
+
+        return Ok(ApiResponse<bool>.Ok(true));
     }
 
     [HttpPost("{id:int}/tags")]

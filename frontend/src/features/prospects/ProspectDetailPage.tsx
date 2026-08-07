@@ -27,9 +27,32 @@ import {
   type MessageResponseDto,
   type MessageStatus,
 } from '../../api/messages';
+import { listTemplates } from '../../api/templates';
+import {
+  cancelScheduledMessage,
+  listScheduledMessages,
+  scheduleMessage,
+  type ScheduledMessageStatus,
+} from '../../api/scheduledMessages';
 
 const DEFAULT_TEST_MESSAGE =
   'Hola {{business_name}}! Somos Hunter. Mirá nuestro catálogo acá: https://tu-tienda.com/catalogo';
+
+const scheduledMessageStatusLabels: Record<ScheduledMessageStatus, string> = {
+  Pending: 'Programado',
+  Running: 'Enviando',
+  Sent: 'Enviado',
+  Failed: 'Falló',
+  Cancelled: 'Cancelado',
+};
+
+const scheduledMessageStatusClass: Record<ScheduledMessageStatus, string> = {
+  Pending: 'bg-indigo-50 dark:bg-indigo-500/10 text-indigo-700 dark:text-indigo-300',
+  Running: 'bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-300',
+  Sent: 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
+  Failed: 'bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-300',
+  Cancelled: 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400',
+};
 
 // Mismo criterio que buildMapsLink en ProspectsListPage: lat/long si están cargados (más
 // preciso), si no arma una búsqueda de texto con nombre + dirección + ciudad + provincia.
@@ -598,6 +621,147 @@ function ConversationSection({ prospectId }: { prospectId: number }) {
   );
 }
 
+function ScheduledMessagesSection({ prospectId }: { prospectId: number }) {
+  const queryClient = useQueryClient();
+  const [templateId, setTemplateId] = useState<number | ''>('');
+  const [scheduledAtInput, setScheduledAtInput] = useState('');
+
+  const templatesQuery = useQuery({ queryKey: ['templates'], queryFn: listTemplates });
+  const scheduledQuery = useQuery({
+    queryKey: ['scheduled-messages', prospectId],
+    queryFn: () => listScheduledMessages(prospectId),
+    refetchInterval: 30000,
+  });
+
+  const availableTemplates = (templatesQuery.data ?? []).filter((t) => t.channel === 'Whatsapp' && t.isActive);
+
+  const scheduleMutation = useMutation({
+    mutationFn: () => {
+      if (!templateId) throw new Error('Elegí una plantilla.');
+      if (!scheduledAtInput) throw new Error('Elegí una fecha y hora.');
+      return scheduleMessage(prospectId, {
+        messageTemplateId: templateId,
+        scheduledAt: new Date(scheduledAtInput).toISOString(),
+      });
+    },
+    onSuccess: () => {
+      setTemplateId('');
+      setScheduledAtInput('');
+      queryClient.invalidateQueries({ queryKey: ['scheduled-messages', prospectId] });
+    },
+  });
+
+  const cancelMutation = useMutation({
+    mutationFn: cancelScheduledMessage,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['scheduled-messages', prospectId] }),
+  });
+
+  const inputClass =
+    'mt-1 w-56 rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-slate-900 dark:text-slate-100';
+
+  return (
+    <section className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4">
+      <h3 className="mb-1 text-sm font-medium text-slate-500 dark:text-slate-400">Programar mensaje (WhatsApp)</h3>
+      <p className="mb-3 text-xs text-slate-400">
+        Programa el envío de una plantilla a este prospecto en una fecha y hora futura. Es un envío único, sin
+        recurrencia.
+      </p>
+
+      <div className="flex flex-wrap items-end gap-3">
+        <div>
+          <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">Plantilla</label>
+          <select
+            value={templateId}
+            onChange={(e) => setTemplateId(e.target.value ? Number(e.target.value) : '')}
+            disabled={templatesQuery.isLoading}
+            className={inputClass}
+          >
+            <option value="">Elegí una plantilla...</option>
+            {availableTemplates.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name} (v{t.version})
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">Fecha y hora</label>
+          <input
+            type="datetime-local"
+            value={scheduledAtInput}
+            onChange={(e) => setScheduledAtInput(e.target.value)}
+            className={inputClass}
+          />
+        </div>
+        <button
+          type="button"
+          onClick={() => scheduleMutation.mutate()}
+          disabled={scheduleMutation.isPending || !templateId || !scheduledAtInput}
+          className="rounded-md bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-60"
+        >
+          {scheduleMutation.isPending ? 'Programando…' : 'Programar'}
+        </button>
+      </div>
+
+      {templatesQuery.data && availableTemplates.length === 0 && (
+        <p className="mt-2 text-xs text-amber-600 dark:text-amber-400">
+          No hay plantillas activas de WhatsApp. Creá una en Plantillas.
+        </p>
+      )}
+
+      {scheduleMutation.isError && (
+        <p className="mt-2 text-sm text-red-600 dark:text-red-400">
+          {scheduleMutation.error instanceof Error ? scheduleMutation.error.message : 'No se pudo programar el mensaje.'}
+        </p>
+      )}
+
+      {scheduledQuery.data && scheduledQuery.data.length > 0 && (
+        <div className="mt-4 overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-800">
+          <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-800 text-sm">
+            <thead className="bg-slate-50 dark:bg-slate-900">
+              <tr>
+                <th className="px-3 py-2 text-left font-medium text-slate-500 dark:text-slate-400">Plantilla</th>
+                <th className="px-3 py-2 text-left font-medium text-slate-500 dark:text-slate-400">Programado</th>
+                <th className="px-3 py-2 text-left font-medium text-slate-500 dark:text-slate-400">Estado</th>
+                <th className="px-3 py-2 text-left font-medium text-slate-500 dark:text-slate-400">Detalle</th>
+                <th className="px-3 py-2 text-left font-medium text-slate-500 dark:text-slate-400"></th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 dark:divide-slate-800 bg-white dark:bg-slate-950">
+              {scheduledQuery.data.map((s) => (
+                <tr key={s.id}>
+                  <td className="px-3 py-2 text-slate-600 dark:text-slate-300">{s.messageTemplateName}</td>
+                  <td className="px-3 py-2 text-slate-600 dark:text-slate-300">
+                    {new Date(s.scheduledAt).toLocaleString('es-AR')}
+                  </td>
+                  <td className="px-3 py-2">
+                    <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${scheduledMessageStatusClass[s.status]}`}>
+                      {scheduledMessageStatusLabels[s.status]}
+                    </span>
+                  </td>
+                  <td className="px-3 py-2 text-xs text-slate-500 dark:text-slate-400">{s.failureReason ?? '—'}</td>
+                  <td className="px-3 py-2">
+                    {s.status === 'Pending' && (
+                      <button
+                        type="button"
+                        onClick={() => cancelMutation.mutate(s.id)}
+                        disabled={cancelMutation.isPending}
+                        className="text-xs font-medium text-red-600 dark:text-red-400 hover:underline disabled:opacity-60"
+                      >
+                        Cancelar
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  );
+}
+
 export function ProspectDetailPage() {
   const { id } = useParams<{ id: string }>();
   const prospectId = Number(id);
@@ -843,6 +1007,8 @@ export function ProspectDetailPage() {
           </div>
         </section>
       )}
+
+      {data.contacts.some((c) => c.channel === 'Whatsapp') && <ScheduledMessagesSection prospectId={data.id} />}
     </div>
   );
 }

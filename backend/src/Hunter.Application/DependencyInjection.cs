@@ -28,6 +28,7 @@ public static class DependencyInjection
         services.AddScoped<IMessageResponseQueryService, MessageResponseQueryService>();
         services.AddScoped<IInboundMessageService, InboundMessageService>();
         services.AddScoped<ITestMessageService, TestMessageService>();
+        services.AddScoped<IScheduledMessageService, ScheduledMessageService>();
         services.AddScoped<IMessageStatusService, MessageStatusService>();
         services.AddScoped<ILeadService, LeadService>();
         services.AddScoped<ISaleQueryService, SaleQueryService>();
