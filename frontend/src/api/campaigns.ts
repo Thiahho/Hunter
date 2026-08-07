@@ -82,8 +82,8 @@ export type CampaignRecipientStatus =
 
 export interface CampaignRecipientDto {
   id: number;
-  campaignId: number;
-  campaignName: string;
+  campaignId: number | null;
+  campaignName: string | null;
   prospectId: number;
   prospectBusinessName: string;
   status: CampaignRecipientStatus;
@@ -92,6 +92,9 @@ export interface CampaignRecipientDto {
   lastMessageFailureReason: string | null;
   lastMessageFailedAt: string | null;
   createdAt: string;
+  // false = envío individual/de prueba (Message suelto sin CampaignId), no pasó por la cola de
+  // una Campaña: no admite "Reintentar" (eso reprocesa la cola de un CampaignRecipient real).
+  isCampaignRecipient: boolean;
 }
 
 export interface CampaignRecipientQuery {

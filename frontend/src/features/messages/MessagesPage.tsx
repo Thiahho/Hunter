@@ -344,7 +344,7 @@ function NotSentTab() {
     mutationFn: async (targets: CampaignRecipientDto[]) => {
       const result = await retryRecipients(targets.map((r) => r.id));
 
-      const campaignIds = [...new Set(targets.map((r) => r.campaignId))];
+      const campaignIds = [...new Set(targets.map((r) => r.campaignId).filter((id): id is number => id !== null))];
       for (const campaignId of campaignIds) {
         for (;;) {
           const batch = await processCampaignQueue(campaignId);
@@ -373,13 +373,13 @@ function NotSentTab() {
   function toggleSelectAllOnPage() {
     if (!query.data) return;
     setSelectedIds((prev) => {
-      const retryable = query.data.items.filter((r) => r.status === 'Failed');
+      const retryable = query.data.items.filter((r) => r.status === 'Failed' && r.isCampaignRecipient);
       const allSelected = retryable.length > 0 && retryable.every((r) => prev.has(r.id));
       return allSelected ? new Set() : new Set(retryable.map((r) => r.id));
     });
   }
 
-  const retryableOnPage = query.data?.items.filter((r) => r.status === 'Failed') ?? [];
+  const retryableOnPage = query.data?.items.filter((r) => r.status === 'Failed' && r.isCampaignRecipient) ?? [];
   const allOnPageSelected = retryableOnPage.length > 0 && retryableOnPage.every((r) => selectedIds.has(r.id));
   const selectedRecipients = query.data?.items.filter((r) => selectedIds.has(r.id)) ?? [];
 
@@ -469,7 +469,7 @@ function NotSentTab() {
                         type="checkbox"
                         checked={selectedIds.has(r.id)}
                         onChange={() => toggleSelected(r.id)}
-                        disabled={r.status !== 'Failed'}
+                        disabled={r.status !== 'Failed' || !r.isCampaignRecipient}
                         aria-label={`Seleccionar destinatario ${r.prospectBusinessName}`}
                         className="rounded border-slate-300 dark:border-slate-700"
                       />
@@ -482,7 +482,9 @@ function NotSentTab() {
                         {r.prospectBusinessName}
                       </Link>
                     </td>
-                    <td className="px-4 py-2 text-slate-600 dark:text-slate-300">{r.campaignName}</td>
+                    <td className="px-4 py-2 text-slate-600 dark:text-slate-300">
+                      {r.campaignName ?? <span title="Envío individual, no pertenece a una campaña">Envío individual</span>}
+                    </td>
                     <td className="px-4 py-2">
                       <span className="text-slate-600 dark:text-slate-300">{recipientStatusLabels[r.status]}</span>
                       {r.status === 'Failed' && r.lastMessageFailureReason && (
@@ -496,7 +498,7 @@ function NotSentTab() {
                       {r.lastAttemptAt ? new Date(r.lastAttemptAt).toLocaleString('es-AR') : '—'}
                     </td>
                     <td className="px-4 py-2">
-                      {r.status === 'Failed' && (
+                      {r.status === 'Failed' && r.isCampaignRecipient && (
                         <button
                           type="button"
                           onClick={() => retryMutation.mutate([r])}

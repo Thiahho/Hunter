@@ -285,12 +285,7 @@ public class CampaignService(
         if (status is not null)
             recipients = recipients.Where(r => r.Status == status);
 
-        var totalItems = await recipients.CountAsync(ct);
-
-        var items = await recipients
-            .OrderByDescending(r => r.UpdatedAt)
-            .Skip((page - 1) * pageSize)
-            .Take(pageSize)
+        var recipientDtos = await recipients
             .Select(r => new CampaignRecipientDto(
                 r.Id,
                 r.CampaignId,
@@ -302,10 +297,51 @@ public class CampaignService(
                 r.LastAttemptAt,
                 db.Messages.Where(m => m.Id == r.LastMessageId).Select(m => m.FailureReason).FirstOrDefault(),
                 db.Messages.Where(m => m.Id == r.LastMessageId).Select(m => m.FailedAt).FirstOrDefault(),
-                r.CreatedAt))
+                r.CreatedAt,
+                true))
             .ToListAsync(ct);
 
-        return new PagedResult<CampaignRecipientDto> { Items = items, Page = page, PageSize = pageSize, TotalItems = totalItems };
+        // Envíos individuales de prueba (TestMessageService) mandan un Message suelto sin pasar
+        // por Campaign/CampaignRecipient. Sin esto, un envío fallido/pendiente hecho a mano nunca
+        // aparece acá sin importar qué estado se elija en el filtro. Queued/Skipped/Stopped no
+        // tienen equivalente en MessageStatus, así que solo se suman para Failed/Pending (o "todos").
+        // Se combinan en memoria (en vez de Concat a nivel SQL) porque EF no puede traducir un set
+        // operation sobre queries ya proyectadas a este DTO.
+        var adHocDtos = new List<CampaignRecipientDto>();
+        if (campaignId is null && status is null or CampaignRecipientStatus.Failed or CampaignRecipientStatus.Pending)
+        {
+            var adHocMessages = db.Messages.Where(m => m.CampaignId == null);
+            adHocMessages = status switch
+            {
+                CampaignRecipientStatus.Failed => adHocMessages.Where(m => m.Status == MessageStatus.Failed),
+                CampaignRecipientStatus.Pending => adHocMessages.Where(m => m.Status == MessageStatus.Pending),
+                _ => adHocMessages.Where(m => m.Status == MessageStatus.Failed || m.Status == MessageStatus.Pending)
+            };
+
+            adHocDtos = await adHocMessages
+                .Select(m => new CampaignRecipientDto(
+                    m.Id,
+                    null,
+                    null,
+                    m.ProspectId,
+                    m.Prospect.BusinessName,
+                    m.Status == MessageStatus.Failed ? CampaignRecipientStatus.Failed : CampaignRecipientStatus.Pending,
+                    1,
+                    m.SentAt ?? m.FailedAt ?? m.CreatedAt,
+                    m.FailureReason,
+                    m.FailedAt,
+                    m.CreatedAt,
+                    false))
+                .ToListAsync(ct);
+        }
+
+        var combined = recipientDtos.Concat(adHocDtos)
+            .OrderByDescending(r => r.LastAttemptAt ?? r.CreatedAt)
+            .ToList();
+
+        var items = combined.Skip((page - 1) * pageSize).Take(pageSize).ToList();
+
+        return new PagedResult<CampaignRecipientDto> { Items = items, Page = page, PageSize = pageSize, TotalItems = combined.Count };
     }
 
     // Solo reintenta destinatarios en estado Failed (un envío que se intentó y falló), de

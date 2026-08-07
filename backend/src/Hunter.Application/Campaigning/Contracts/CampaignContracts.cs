@@ -58,10 +58,13 @@ public record ProcessQueueResultDto(int Processed, int Sent, int Failed, int Sup
 
 public record KillSwitchRequest(bool Enabled, string? Reason);
 
+// CampaignId/CampaignName son null cuando la fila representa un envío individual (ver
+// TestMessageService) que nunca pasó por un CampaignRecipient real: IsCampaignRecipient=false
+// distingue ese caso, que no admite reintento por cola (RetryRecipientsAsync).
 public record CampaignRecipientDto(
     int Id,
-    int CampaignId,
-    string CampaignName,
+    int? CampaignId,
+    string? CampaignName,
     int ProspectId,
     string ProspectBusinessName,
     CampaignRecipientStatus Status,
@@ -69,7 +72,8 @@ public record CampaignRecipientDto(
     DateTimeOffset? LastAttemptAt,
     string? LastMessageFailureReason,
     DateTimeOffset? LastMessageFailedAt,
-    DateTimeOffset CreatedAt);
+    DateTimeOffset CreatedAt,
+    bool IsCampaignRecipient);
 
 public record RetryRecipientsRequest(IReadOnlyCollection<int> RecipientIds);
 
