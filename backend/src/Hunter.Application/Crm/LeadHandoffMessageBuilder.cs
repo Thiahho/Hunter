@@ -30,10 +30,11 @@ public static class LeadHandoffMessageBuilder
     // al CRM. assigneeFirstName es opcional (nombre del usuario logueado que recibe el handoff):
     // si viene, se agrega una sugerencia de respuesta lista para copiar y pegar; si no, se omite
     // ese bloque entero en vez de dejar un saludo con nombre vacío.
-    public static string BuildFreeText(Prospect prospect, string prospectMessage, string prospectWhatsApp, string? assigneeFirstName = null)
+    public static string BuildFreeText(
+        Prospect prospect, string prospectMessage, string prospectWhatsApp, string? assigneeFirstName = null, bool isBotEscalation = false)
     {
         var sb = new StringBuilder();
-        sb.AppendLine("🔥 NUEVO LEAD");
+        sb.AppendLine(isBotEscalation ? "🤖 BOT DETECTADO — reintentos agotados" : "🔥 NUEVO LEAD");
         sb.AppendLine();
         sb.AppendLine(prospect.BusinessName);
         sb.AppendLine();
@@ -54,7 +55,7 @@ public static class LeadHandoffMessageBuilder
         sb.AppendLine($"📱 {BuildWhatsAppLink(prospectWhatsApp, suggestedReply)}");
 
         sb.AppendLine();
-        sb.AppendLine("Mensaje:");
+        sb.AppendLine(isBotEscalation ? "El bot del negocio no lo dejó pasar. Última respuesta (automática):" : "Mensaje:");
         sb.AppendLine($"\"{Truncate(prospectMessage)}\"");
 
         if (suggestedReply is null)

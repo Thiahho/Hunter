@@ -13,7 +13,9 @@ namespace Hunter.Tests.Integration;
 
 // Cubre IAutoReplyDetector (frase típica de auto-responder, texto duplicado entre prospectos
 // distintos) y el flujo completo en InboundMessageService cuando se detecta una auto-respuesta:
-// no genera Lead, no notifica al vendedor, y programa (con tope) un ScheduledMessage de reintento.
+// mientras queden reintentos programa (con tope) un ScheduledMessage de reintento sin generar
+// Lead ni notificar al vendedor; agotados los reintentos (o sin plantilla de seguimiento
+// configurada), escala creando un Lead para que un humano le escriba directo.
 public class AutoReplyDetectionTests
 {
     // Frase larga sin match de reglas de IAutoReplyDetector ni de KeywordIntentClassifier, para
@@ -173,12 +175,13 @@ public class AutoReplyDetectionTests
     }
 
     [Fact]
-    public async Task ProcessAsync_AutoReplyPhrase_NoFollowUpTemplateConfigured_StillSucceedsWithoutScheduling()
+    public async Task ProcessAsync_AutoReplyPhrase_NoFollowUpTemplateConfigured_EscalatesToLead()
     {
         var dbName = TestDb.NewDbName();
         var orgId = await SeedOrgAsync(dbName);
         var prospectId = await SeedProspectAsync(dbName, orgId, "5491112345678");
-        // Sin SeedFollowUpTemplateAsync: la organización no tiene plantilla IsFollowUpTemplate.
+        // Sin SeedFollowUpTemplateAsync: la organización no tiene plantilla IsFollowUpTemplate,
+        // así que no hay reintento automático posible y se escala directo a un Lead.
 
         await using var db = TestDb.Create(dbName, organizationId: null);
         var service = CreateService(db);
@@ -188,15 +191,18 @@ public class AutoReplyDetectionTests
 
         Assert.True(result.Succeeded);
         Assert.Equal(IntentClassification.AutomatedReply, result.Value!.Classification);
+        Assert.NotNull(result.Value.LeadId);
 
         await using var assertDb = TestDb.Create(dbName, organizationId: orgId);
         Assert.False(await assertDb.ScheduledMessages.AnyAsync(s => s.ProspectId == prospectId));
         var prospect = await assertDb.Prospects.FirstAsync(p => p.Id == prospectId);
         Assert.Equal(0, prospect.AutoReplyAttempts);
+        Assert.Equal(ProspectStatus.AutoReplyDetected, prospect.Status);
+        Assert.True(await assertDb.Leads.AnyAsync(l => l.ProspectId == prospectId));
     }
 
     [Fact]
-    public async Task ProcessAsync_AutoReplyPhrase_AttemptsCapReached_DoesNotScheduleAnotherFollowUp()
+    public async Task ProcessAsync_AutoReplyPhrase_AttemptsCapReached_EscalatesToLeadInsteadOfAnotherFollowUp()
     {
         var dbName = TestDb.NewDbName();
         var orgId = await SeedOrgAsync(dbName);
@@ -218,10 +224,12 @@ public class AutoReplyDetectionTests
             orgId, "5491112345678", "Gracias por comunicarte con nosotros. En este momento no podemos atenderte."));
 
         Assert.True(result.Succeeded);
+        Assert.NotNull(result.Value!.LeadId);
 
         await using var assertDb = TestDb.Create(dbName, organizationId: orgId);
         Assert.False(await assertDb.ScheduledMessages.AnyAsync(s => s.ProspectId == prospectId));
         var prospect = await assertDb.Prospects.FirstAsync(p => p.Id == prospectId);
         Assert.Equal(2, prospect.AutoReplyAttempts);
+        Assert.True(await assertDb.Leads.AnyAsync(l => l.ProspectId == prospectId));
     }
 }

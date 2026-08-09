@@ -182,13 +182,22 @@ public class InboundMessageService(
                 break;
 
             case IntentClassification.AutomatedReply:
-                // No se crea Lead ni se notifica al vendedor: sería spamear con charla de bot.
-                // Sí se cuenta como Responded a nivel campaña (hubo una respuesta), pero el
-                // prospecto queda en un estado propio y visible en vez de darlo por respondido.
+                // Mientras haya reintentos disponibles no se crea Lead ni se notifica al
+                // vendedor: sería spamear con charla de bot. Se cuenta como Responded a nivel
+                // campaña (hubo una respuesta), pero el prospecto queda en un estado propio y
+                // visible en vez de darlo por respondido.
                 prospect.Status = ProspectStatus.AutoReplyDetected;
                 if (recipient is not null) recipient.Status = CampaignRecipientStatus.Responded;
 
-                await ScheduleAutoReplyFollowUpAsync(request.OrganizationId, prospect, ct);
+                var followUpScheduled = await ScheduleAutoReplyFollowUpAsync(request.OrganizationId, prospect, ct);
+                if (!followUpScheduled)
+                {
+                    // Reintentos agotados (o la organización no tiene plantilla de seguimiento
+                    // configurada): ya no hay más intentos automáticos de atravesar el bot, así
+                    // que se escala como un Lead para que un humano le escriba directo, en vez de
+                    // dejar el prospecto parqueado en silencio.
+                    (lead, leadCreated) = await CreateOrReuseLeadAsync(request.OrganizationId, prospect, campaignId, effective, ct);
+                }
                 break;
 
             default:
@@ -206,7 +215,7 @@ public class InboundMessageService(
         // mensaje de texto de seguimiento sobre un lead ya abierto no reenvía nada, para no
         // spamear al vendedor con cada respuesta.
         if (lead is not null && (leadCreated || isInterestButtonTap))
-            await NotifyAssigneeAsync(lead, prospect, request.Content, prospectContact.Value, ct);
+            await NotifyAssigneeAsync(lead, prospect, request.Content, prospectContact.Value, effective == IntentClassification.AutomatedReply, ct);
         else if (lead is not null)
             logger.LogInformation(
                 "[LeadHandoff] Lead {LeadId} reutilizado (ya estaba abierto), no se reenvía notificación de handoff.", lead.Id);
@@ -301,14 +310,16 @@ public class InboundMessageService(
     // mensaje" (ScheduledMessageBackgroundService + ScheduledMessageService.RunAsync), con
     // Source=AutoReplyRetry y sin usuario detrás. Tope en Prospect.AutoReplyAttempts: agotado, se
     // deja de reintentar solo y el prospecto queda para revisión manual.
-    private async Task ScheduleAutoReplyFollowUpAsync(int organizationId, Prospect prospect, CancellationToken ct)
+    // Devuelve true si programó un reintento; false si ya no quedan más intentos disponibles o
+    // no hay plantilla de seguimiento configurada, en cuyo caso el llamador escala a un Lead.
+    private async Task<bool> ScheduleAutoReplyFollowUpAsync(int organizationId, Prospect prospect, CancellationToken ct)
     {
         if (prospect.AutoReplyAttempts >= autoReplyOptions.Value.MaxAutoReplyAttempts)
         {
             logger.LogInformation(
                 "[AutoReply] Prospecto {ProspectId} ya alcanzó el tope de {Max} reintentos automáticos, no se programa otro.",
                 prospect.Id, autoReplyOptions.Value.MaxAutoReplyAttempts);
-            return;
+            return false;
         }
 
         var followUpTemplate = await db.MessageTemplates.IgnoreQueryFilters()
@@ -320,7 +331,7 @@ public class InboundMessageService(
             logger.LogWarning(
                 "[AutoReply] Prospecto {ProspectId}: se detectó un auto-responder pero la organización {OrganizationId} no tiene una plantilla de seguimiento activa (IsFollowUpTemplate=true). No se programó ningún reintento.",
                 prospect.Id, organizationId);
-            return;
+            return false;
         }
 
         db.ScheduledMessages.Add(new ScheduledMessage
@@ -335,6 +346,7 @@ public class InboundMessageService(
         });
 
         prospect.AutoReplyAttempts++;
+        return true;
     }
 
     private async Task<(Lead Lead, bool Created)> CreateOrReuseLeadAsync(
@@ -384,7 +396,8 @@ public class InboundMessageService(
     // independientes (cada uno solo si el usuario tiene el dato cargado). Nunca debe romper el
     // procesamiento del webhook: un fallo acá (de red, de configuración, lo que sea) solo se
     // loguea, porque un 500 en el webhook hace que Meta reintente el mismo evento para siempre.
-    private async Task NotifyAssigneeAsync(Lead lead, Prospect prospect, string prospectMessage, string prospectWhatsApp, CancellationToken ct)
+    private async Task NotifyAssigneeAsync(
+        Lead lead, Prospect prospect, string prospectMessage, string prospectWhatsApp, bool isBotEscalation, CancellationToken ct)
     {
         try
         {
@@ -404,7 +417,7 @@ public class InboundMessageService(
                 return;
             }
 
-            var freeText = LeadHandoffMessageBuilder.BuildFreeText(prospect, prospectMessage, prospectWhatsApp, assignee.FirstName);
+            var freeText = LeadHandoffMessageBuilder.BuildFreeText(prospect, prospectMessage, prospectWhatsApp, assignee.FirstName, isBotEscalation);
 
             await NotifyByWhatsAppAsync(lead, assignee.Phone, prospect, prospectMessage, freeText, ct);
             await NotifyByTelegramAsync(lead, assignee.TelegramChatId, prospect, prospectWhatsApp, assignee.FirstName, freeText, ct);
