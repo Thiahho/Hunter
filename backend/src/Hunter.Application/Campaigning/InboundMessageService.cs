@@ -341,7 +341,7 @@ public class InboundMessageService(
             Source = ScheduledMessageSource.AutoReplyRetry,
             ProspectId = prospect.Id,
             MessageTemplateId = followUpTemplate.Id,
-            ScheduledAt = DateTimeOffset.UtcNow.AddHours(autoReplyOptions.Value.DelayHours),
+            ScheduledAt = DateTimeOffset.UtcNow.AddMinutes(autoReplyOptions.Value.DelayMinutes),
             Status = ScheduledMessageStatus.Pending
         });
 
