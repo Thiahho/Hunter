@@ -7,7 +7,7 @@ import { PasswordInput } from '../../components/PasswordInput';
 const inputClass =
   'mt-1 w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-slate-900 dark:text-slate-100';
 
-export function ProfilePage() {
+function ProfilePage() {
   const queryClient = useQueryClient();
   const updateStoredUser = useAuthStore((state) => state.updateUser);
   const meQuery = useQuery({ queryKey: ['me'], queryFn: fetchCurrentUser });
@@ -94,7 +94,7 @@ export function ProfilePage() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Apellido</label>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-</label>
             <input type="text" value={lastName} onChange={(e) => setLastName(e.target.value)} className={inputClass} />
           </div>
 

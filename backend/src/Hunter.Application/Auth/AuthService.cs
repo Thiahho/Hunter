@@ -35,7 +35,7 @@ public class AuthService(
             OrganizationId = organization.Id,
             Organization = organization,
             FirstName = request.OwnerFirstName.Trim(),
-            LastName = request.OwnerLastName.Trim(),
+            LastName = request.OwnerLastName?.Trim() ?? string.Empty,
             Email = request.OwnerEmail.Trim().ToLowerInvariant(),
             // Una organización de una sola persona tiene que recibir sus propios leads
             // desde el arranque, sin depender de que alguien configure áreas primero.
@@ -252,8 +252,8 @@ public class AuthService(
     {
         if (string.IsNullOrWhiteSpace(request.OrganizationName))
             return "El nombre de la organización es obligatorio.";
-        if (string.IsNullOrWhiteSpace(request.OwnerFirstName) || string.IsNullOrWhiteSpace(request.OwnerLastName))
-            return "El nombre y apellido del propietario son obligatorios.";
+        if (string.IsNullOrWhiteSpace(request.OwnerFirstName))
+            return "El nombre del propietario es obligatorio.";
         if (string.IsNullOrWhiteSpace(request.OwnerEmail) || !request.OwnerEmail.Contains('@'))
             return "El email no es válido.";
         if (string.IsNullOrWhiteSpace(request.Password) || request.Password.Length < 8)

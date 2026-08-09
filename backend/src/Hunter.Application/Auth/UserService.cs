@@ -39,7 +39,7 @@ public class UserService(IHunterDbContext db, IPasswordHasher passwordHasher, IC
         {
             OrganizationId = organizationId,
             FirstName = request.FirstName.Trim(),
-            LastName = request.LastName.Trim(),
+            LastName = request.LastName?.Trim() ?? string.Empty,
             Email = request.Email.Trim().ToLowerInvariant(),
             Phone = string.IsNullOrWhiteSpace(request.Phone)
                 ? null
@@ -110,8 +110,8 @@ public class UserService(IHunterDbContext db, IPasswordHasher passwordHasher, IC
 
     private async Task<string?> ValidateAsync(int organizationId, CreateUserRequest request, CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(request.FirstName) || string.IsNullOrWhiteSpace(request.LastName))
-            return "El nombre y apellido son obligatorios.";
+        if (string.IsNullOrWhiteSpace(request.FirstName))
+            return "El nombre es obligatorio.";
         if (string.IsNullOrWhiteSpace(request.Email) || !request.Email.Contains('@'))
             return "El email no es válido.";
         if (string.IsNullOrWhiteSpace(request.Password) || request.Password.Length < 8)

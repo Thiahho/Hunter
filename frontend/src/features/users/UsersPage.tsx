@@ -114,7 +114,7 @@ export function UsersPage() {
           <input type="text" required value={firstName} onChange={(e) => setFirstName(e.target.value)} className={inputClass} />
         </div>
         <div>
-          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Apellido</label>
+          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Apellido (opcional)</label>
           <input type="text" value={lastName} onChange={(e) => setLastName(e.target.value)} className={inputClass} />
         </div>
         <div>
