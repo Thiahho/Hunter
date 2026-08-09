@@ -130,6 +130,7 @@ public class ScheduledMessageService(
             scheduled.RunAt,
             scheduled.MessageId,
             scheduled.FailureReason,
+            scheduled.Source,
             scheduled.CreatedAt);
     }
 }

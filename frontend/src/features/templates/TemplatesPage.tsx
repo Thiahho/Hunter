@@ -5,6 +5,7 @@ import {
   listTemplates,
   setTemplateActive,
   setTemplateCatalog,
+  setTemplateFollowUp,
   syncTemplateFromMeta,
   type MessageTemplateDto,
   type MetaWhatsAppTemplateDto,
@@ -35,6 +36,11 @@ function LocalTemplatesTable() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['templates'] }),
   });
 
+  const followUpMutation = useMutation({
+    mutationFn: (id: number) => setTemplateFollowUp(id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['templates'] }),
+  });
+
   if (query.isLoading) return <p className="text-sm text-slate-500 dark:text-slate-400">Cargando...</p>;
   if (query.isError) {
     return (
@@ -57,6 +63,7 @@ function LocalTemplatesTable() {
             <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">Contenido</th>
             <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">Estado</th>
             <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">Catálogo</th>
+            <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">Seguimiento auto.</th>
             <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">Acciones</th>
           </tr>
         </thead>
@@ -81,6 +88,7 @@ function LocalTemplatesTable() {
                 </span>
               </td>
               <td className="px-4 py-2 text-slate-600 dark:text-slate-300">{t.isCatalogTemplate ? 'Sí' : '—'}</td>
+              <td className="px-4 py-2 text-slate-600 dark:text-slate-300">{t.isFollowUpTemplate ? 'Sí' : '—'}</td>
               <td className="px-4 py-2 space-x-3">
                 <button
                   type="button"
@@ -100,12 +108,22 @@ function LocalTemplatesTable() {
                     Marcar como catálogo
                   </button>
                 )}
+                {!t.isFollowUpTemplate && (
+                  <button
+                    type="button"
+                    onClick={() => followUpMutation.mutate(t.id)}
+                    disabled={followUpMutation.isPending}
+                    className="text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:underline disabled:opacity-60"
+                  >
+                    Marcar como seguimiento automático
+                  </button>
+                )}
               </td>
             </tr>
           ))}
           {templates.length === 0 && (
             <tr>
-              <td colSpan={7} className="px-4 py-6 text-center text-slate-400">
+              <td colSpan={8} className="px-4 py-6 text-center text-slate-400">
                 Sin plantillas todavía.
               </td>
             </tr>

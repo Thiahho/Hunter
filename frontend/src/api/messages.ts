@@ -3,7 +3,7 @@ import type { ApiResponse, PagedResult } from './types';
 
 export type MessagingChannel = 'Whatsapp' | 'Email' | 'Telegram' | 'Sms';
 export type MessageStatus = 'Pending' | 'Sent' | 'Delivered' | 'Read' | 'Failed' | 'Cancelled';
-export type IntentClassification = 'Interested' | 'NotInterested' | 'Question' | 'Unclear' | 'Stop';
+export type IntentClassification = 'Interested' | 'NotInterested' | 'Question' | 'Unclear' | 'Stop' | 'AutomatedReply';
 
 export interface MessageDto {
   id: number;

@@ -8,6 +8,7 @@ using Hunter.Infrastructure.Messaging;
 using Hunter.Tests.TestSupport;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 
 namespace Hunter.Tests.Integration;
 
@@ -69,7 +70,7 @@ public class LeadHandoffNotificationTests
         var provider = new RecordingMessageProvider();
 
         await using var db = TestDb.Create(dbName, organizationId: null);
-        var service = new InboundMessageService(db, new KeywordIntentClassifier(), provider, new RecordingTelegramNotifier(), NullLogger<InboundMessageService>.Instance);
+        var service = new InboundMessageService(db, new KeywordIntentClassifier(), new AutoReplyDetector(db), Options.Create(new AutoReplyFollowUpOptions()), provider, new RecordingTelegramNotifier(), NullLogger<InboundMessageService>.Instance);
 
         var result = await service.ProcessAsync(new InboundMessageRequest(orgId, "5491112345678", "me interesa, pasame info"));
 
@@ -97,7 +98,7 @@ public class LeadHandoffNotificationTests
         var provider = new RecordingMessageProvider();
 
         await using var db = TestDb.Create(dbName, organizationId: null);
-        var service = new InboundMessageService(db, new KeywordIntentClassifier(), provider, new RecordingTelegramNotifier(), NullLogger<InboundMessageService>.Instance);
+        var service = new InboundMessageService(db, new KeywordIntentClassifier(), new AutoReplyDetector(db), Options.Create(new AutoReplyFollowUpOptions()), provider, new RecordingTelegramNotifier(), NullLogger<InboundMessageService>.Instance);
 
         var result = await service.ProcessAsync(new InboundMessageRequest(orgId, "5491112345678", "me interesa"));
 
@@ -117,7 +118,7 @@ public class LeadHandoffNotificationTests
         var telegram = new RecordingTelegramNotifier();
 
         await using var db = TestDb.Create(dbName, organizationId: null);
-        var service = new InboundMessageService(db, new KeywordIntentClassifier(), provider, telegram, NullLogger<InboundMessageService>.Instance);
+        var service = new InboundMessageService(db, new KeywordIntentClassifier(), new AutoReplyDetector(db), Options.Create(new AutoReplyFollowUpOptions()), provider, telegram, NullLogger<InboundMessageService>.Instance);
 
         var result = await service.ProcessAsync(new InboundMessageRequest(orgId, "5491112345678", "me interesa, pasame info"));
 
@@ -141,7 +142,7 @@ public class LeadHandoffNotificationTests
         var telegram = new RecordingTelegramNotifier();
 
         await using var db = TestDb.Create(dbName, organizationId: null);
-        var service = new InboundMessageService(db, new KeywordIntentClassifier(), provider, telegram, NullLogger<InboundMessageService>.Instance);
+        var service = new InboundMessageService(db, new KeywordIntentClassifier(), new AutoReplyDetector(db), Options.Create(new AutoReplyFollowUpOptions()), provider, telegram, NullLogger<InboundMessageService>.Instance);
 
         var result = await service.ProcessAsync(new InboundMessageRequest(orgId, "5491112345678", "me interesa"));
 
@@ -161,7 +162,7 @@ public class LeadHandoffNotificationTests
         var telegram = new RecordingTelegramNotifier { NextSendSucceeds = false, NextSendError = "bot no autorizado" };
 
         await using var db = TestDb.Create(dbName, organizationId: null);
-        var service = new InboundMessageService(db, new KeywordIntentClassifier(), provider, telegram, NullLogger<InboundMessageService>.Instance);
+        var service = new InboundMessageService(db, new KeywordIntentClassifier(), new AutoReplyDetector(db), Options.Create(new AutoReplyFollowUpOptions()), provider, telegram, NullLogger<InboundMessageService>.Instance);
 
         var result = await service.ProcessAsync(new InboundMessageRequest(orgId, "5491112345678", "me interesa"));
 
@@ -185,7 +186,7 @@ public class LeadHandoffNotificationTests
         var telegram = new RecordingTelegramNotifier();
 
         await using var db = TestDb.Create(dbName, organizationId: null);
-        var service = new InboundMessageService(db, new KeywordIntentClassifier(), provider, telegram, NullLogger<InboundMessageService>.Instance);
+        var service = new InboundMessageService(db, new KeywordIntentClassifier(), new AutoReplyDetector(db), Options.Create(new AutoReplyFollowUpOptions()), provider, telegram, NullLogger<InboundMessageService>.Instance);
 
         var result = await service.ProcessAsync(new InboundMessageRequest(orgId, "5491112345678", "me interesa"));
 
@@ -209,14 +210,14 @@ public class LeadHandoffNotificationTests
 
         await using (var db1 = TestDb.Create(dbName, organizationId: null))
         {
-            var service1 = new InboundMessageService(db1, new KeywordIntentClassifier(), provider, new RecordingTelegramNotifier(), NullLogger<InboundMessageService>.Instance);
+            var service1 = new InboundMessageService(db1, new KeywordIntentClassifier(), new AutoReplyDetector(db1), Options.Create(new AutoReplyFollowUpOptions()), provider, new RecordingTelegramNotifier(), NullLogger<InboundMessageService>.Instance);
             var result1 = await service1.ProcessAsync(new InboundMessageRequest(orgId, "5491112345678", "me interesa", ExternalInboundId: "wh-1"));
             Assert.True(result1.Succeeded);
         }
 
         await using (var db2 = TestDb.Create(dbName, organizationId: null))
         {
-            var service2 = new InboundMessageService(db2, new KeywordIntentClassifier(), provider, new RecordingTelegramNotifier(), NullLogger<InboundMessageService>.Instance);
+            var service2 = new InboundMessageService(db2, new KeywordIntentClassifier(), new AutoReplyDetector(db2), Options.Create(new AutoReplyFollowUpOptions()), provider, new RecordingTelegramNotifier(), NullLogger<InboundMessageService>.Instance);
             var result2 = await service2.ProcessAsync(new InboundMessageRequest(orgId, "5491112345678", "dale, me interesa", ExternalInboundId: "wh-2"));
             Assert.True(result2.Succeeded);
         }
@@ -237,7 +238,7 @@ public class LeadHandoffNotificationTests
 
         await using (var db1 = TestDb.Create(dbName, organizationId: null))
         {
-            var service1 = new InboundMessageService(db1, new KeywordIntentClassifier(), provider, new RecordingTelegramNotifier(), NullLogger<InboundMessageService>.Instance);
+            var service1 = new InboundMessageService(db1, new KeywordIntentClassifier(), new AutoReplyDetector(db1), Options.Create(new AutoReplyFollowUpOptions()), provider, new RecordingTelegramNotifier(), NullLogger<InboundMessageService>.Instance);
             var result1 = await service1.ProcessAsync(new InboundMessageRequest(
                 orgId, "5491112345678", "Estoy interesado", ExternalInboundId: "wh-btn-1", ButtonPayload: QuickReplyPayloads.Interested));
             Assert.True(result1.Succeeded);
@@ -245,7 +246,7 @@ public class LeadHandoffNotificationTests
 
         await using (var db2 = TestDb.Create(dbName, organizationId: null))
         {
-            var service2 = new InboundMessageService(db2, new KeywordIntentClassifier(), provider, new RecordingTelegramNotifier(), NullLogger<InboundMessageService>.Instance);
+            var service2 = new InboundMessageService(db2, new KeywordIntentClassifier(), new AutoReplyDetector(db2), Options.Create(new AutoReplyFollowUpOptions()), provider, new RecordingTelegramNotifier(), NullLogger<InboundMessageService>.Instance);
             var result2 = await service2.ProcessAsync(new InboundMessageRequest(
                 orgId, "5491112345678", "Estoy interesado", ExternalInboundId: "wh-btn-2", ButtonPayload: QuickReplyPayloads.Interested));
             Assert.True(result2.Succeeded);
@@ -267,7 +268,7 @@ public class LeadHandoffNotificationTests
         var provider = new RecordingMessageProvider { NextSendSucceeds = false, NextSendError = "131047: fuera de ventana" };
 
         await using var db = TestDb.Create(dbName, organizationId: null);
-        var service = new InboundMessageService(db, new KeywordIntentClassifier(), provider, new RecordingTelegramNotifier(), NullLogger<InboundMessageService>.Instance);
+        var service = new InboundMessageService(db, new KeywordIntentClassifier(), new AutoReplyDetector(db), Options.Create(new AutoReplyFollowUpOptions()), provider, new RecordingTelegramNotifier(), NullLogger<InboundMessageService>.Instance);
 
         var result = await service.ProcessAsync(new InboundMessageRequest(orgId, "5491112345678", "me interesa"));
 
@@ -289,7 +290,7 @@ public class LeadHandoffNotificationTests
         var provider = new RecordingMessageProvider { ThrowOnNextSend = true };
 
         await using var db = TestDb.Create(dbName, organizationId: null);
-        var service = new InboundMessageService(db, new KeywordIntentClassifier(), provider, new RecordingTelegramNotifier(), NullLogger<InboundMessageService>.Instance);
+        var service = new InboundMessageService(db, new KeywordIntentClassifier(), new AutoReplyDetector(db), Options.Create(new AutoReplyFollowUpOptions()), provider, new RecordingTelegramNotifier(), NullLogger<InboundMessageService>.Instance);
 
         var result = await service.ProcessAsync(new InboundMessageRequest(orgId, "5491112345678", "me interesa"));
 

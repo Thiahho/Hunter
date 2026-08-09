@@ -104,6 +104,7 @@ const statuses: ProspectStatus[] = [
   'Customer',
   'Suppressed',
   'Invalid',
+  'AutoReplyDetected',
 ];
 
 function toFormState(prospect: Prospect): UpdateProspectRequest {
@@ -538,6 +539,7 @@ const conversationClassificationLabels: Record<IntentClassification, string> = {
   Question: 'Pregunta',
   Unclear: 'Sin clasificar',
   Stop: 'Baja (STOP)',
+  AutomatedReply: 'Respuesta automática',
 };
 
 type ConversationEntry =
@@ -734,7 +736,14 @@ function ScheduledMessagesSection({ prospectId }: { prospectId: number }) {
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800 bg-white dark:bg-slate-950">
               {scheduledQuery.data.map((s) => (
                 <tr key={s.id}>
-                  <td className="px-3 py-2 text-slate-600 dark:text-slate-300">{s.messageTemplateName}</td>
+                  <td className="px-3 py-2 text-slate-600 dark:text-slate-300">
+                    {s.messageTemplateName}
+                    {s.source === 'AutoReplyRetry' && (
+                      <span className="ml-2 rounded-full bg-sky-50 px-2 py-0.5 text-xs font-medium text-sky-700 dark:bg-sky-500/10 dark:text-sky-300">
+                        Reintento automático
+                      </span>
+                    )}
+                  </td>
                   <td className="px-3 py-2 text-slate-600 dark:text-slate-300">
                     {new Date(s.scheduledAt).toLocaleString('es-AR')}
                   </td>

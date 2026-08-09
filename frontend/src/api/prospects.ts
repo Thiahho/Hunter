@@ -22,7 +22,8 @@ export type ProspectStatus =
   | 'Lead'
   | 'Customer'
   | 'Suppressed'
-  | 'Invalid';
+  | 'Invalid'
+  | 'AutoReplyDetected';
 
 export type BusinessSize = 'Unknown' | 'Micro' | 'Small' | 'Medium' | 'Large';
 export type RecurrencePotential = 'Unknown' | 'Low' | 'Medium' | 'High';

@@ -68,6 +68,16 @@ public class MessageTemplatesController(IMessageTemplateService templateService)
         return Ok(ApiResponse<bool>.Ok(true));
     }
 
+    [HttpPatch("{id:int}/follow-up")]
+    public async Task<IActionResult> SetFollowUp(int id, CancellationToken ct)
+    {
+        var result = await templateService.SetFollowUpAsync(id, ct);
+        if (!result.Succeeded)
+            return NotFound(ApiResponse<bool>.Fail(result.Error!));
+
+        return Ok(ApiResponse<bool>.Ok(true));
+    }
+
     [HttpGet("meta")]
     public async Task<IActionResult> ListMetaTemplates(CancellationToken ct)
     {

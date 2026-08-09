@@ -10,6 +10,7 @@ export interface MessageTemplateDto {
   version: number;
   isActive: boolean;
   isCatalogTemplate: boolean;
+  isFollowUpTemplate: boolean;
 }
 
 export interface CreateMessageTemplateRequest {
@@ -72,6 +73,13 @@ export async function setTemplateCatalog(id: number): Promise<void> {
   const response = await apiClient.patch<ApiResponse<boolean>>(`/templates/${id}/catalog`);
   if (!response.data.success) {
     throw new Error(response.data.message ?? 'No se pudo marcar la plantilla como catálogo.');
+  }
+}
+
+export async function setTemplateFollowUp(id: number): Promise<void> {
+  const response = await apiClient.patch<ApiResponse<boolean>>(`/templates/${id}/follow-up`);
+  if (!response.data.success) {
+    throw new Error(response.data.message ?? 'No se pudo marcar la plantilla como seguimiento automático.');
   }
 }
 

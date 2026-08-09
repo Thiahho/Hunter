@@ -14,4 +14,5 @@ public record ScheduledMessageDto(
     DateTimeOffset? RunAt,
     int? MessageId,
     string? FailureReason,
+    string Source,
     DateTimeOffset CreatedAt);

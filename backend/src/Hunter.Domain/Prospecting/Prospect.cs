@@ -31,6 +31,12 @@ public class Prospect : Entity
 
     public ProspectStatus Status { get; set; } = ProspectStatus.New;
 
+    // Cuántas veces se le mandó un mensaje de reintento automático tras detectar que la
+    // respuesta anterior era un auto-responder (ver AutoReplyDetector/InboundMessageService).
+    // Tope en AutoReplyFollowUpOptions.MaxAutoReplyAttempts: al llegar ahí se deja de reintentar
+    // solo y el prospecto queda para revisión manual.
+    public int AutoReplyAttempts { get; set; }
+
     public bool IsDeleted { get; set; }
     public DateTimeOffset? DeletedAt { get; set; }
 

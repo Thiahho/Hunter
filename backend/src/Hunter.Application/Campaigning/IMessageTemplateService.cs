@@ -15,6 +15,11 @@ public interface IMessageTemplateService
     // InboundMessageService la usa para responder automáticamente cuando detecta INTERESTED.
     Task<Result<bool>> SetCatalogAsync(int id, CancellationToken ct = default);
 
+    // Marca esta plantilla como EL nudge de seguimiento de la organización (desmarca cualquier
+    // otra). InboundMessageService la usa para reintentar automáticamente cuando IAutoReplyDetector
+    // detecta un auto-responder del prospecto.
+    Task<Result<bool>> SetFollowUpAsync(int id, CancellationToken ct = default);
+
     // Plantillas aprobadas en Meta Business Manager para la WABA configurada, listas para elegir
     // sin tipear contenido a mano.
     Task<Result<IReadOnlyList<MetaWhatsAppTemplateDto>>> ListMetaTemplatesAsync(CancellationToken ct = default);

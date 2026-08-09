@@ -14,6 +14,7 @@ public class ScheduledMessageConfiguration : IEntityTypeConfiguration<ScheduledM
 
         builder.Property(x => x.Status).HasConversion<string>().HasMaxLength(20);
         builder.Property(x => x.FailureReason).HasMaxLength(500);
+        builder.Property(x => x.Source).HasMaxLength(30).IsRequired();
 
         builder.HasIndex(x => new { x.OrganizationId, x.Status, x.ScheduledAt });
         builder.HasIndex(x => x.ProspectId);

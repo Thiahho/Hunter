@@ -109,6 +109,24 @@ public class MessageTemplateService(
         return Result<bool>.Success(true);
     }
 
+    public async Task<Result<bool>> SetFollowUpAsync(int id, CancellationToken ct = default)
+    {
+        var target = await db.MessageTemplates.FirstOrDefaultAsync(t => t.Id == id, ct);
+        if (target is null)
+            return Result<bool>.Failure("Plantilla no encontrada.");
+
+        var previous = await db.MessageTemplates
+            .Where(t => t.OrganizationId == target.OrganizationId && t.IsFollowUpTemplate && t.Id != id)
+            .ToListAsync(ct);
+        foreach (var template in previous)
+            template.IsFollowUpTemplate = false;
+
+        target.IsFollowUpTemplate = true;
+        await db.SaveChangesAsync(ct);
+
+        return Result<bool>.Success(true);
+    }
+
     public Task<Result<IReadOnlyList<MetaWhatsAppTemplateDto>>> ListMetaTemplatesAsync(CancellationToken ct = default) =>
         templateCatalogClient.ListApprovedAsync(ct);
 
@@ -161,5 +179,6 @@ public class MessageTemplateService(
         return Result<MessageTemplateDto>.Success(ToDto(synced));
     }
 
-    private static MessageTemplateDto ToDto(MessageTemplate t) => new(t.Id, t.Name, t.Content, t.Channel, t.Version, t.IsActive, t.IsCatalogTemplate);
+    private static MessageTemplateDto ToDto(MessageTemplate t) =>
+        new(t.Id, t.Name, t.Content, t.Channel, t.Version, t.IsActive, t.IsCatalogTemplate, t.IsFollowUpTemplate);
 }

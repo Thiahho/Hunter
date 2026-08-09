@@ -55,9 +55,17 @@ const classificationLabels: Record<IntentClassification, string> = {
   Question: 'Pregunta',
   Unclear: 'Sin clasificar',
   Stop: 'Baja (STOP)',
+  AutomatedReply: 'Respuesta automática',
 };
 
-const classificationOptions: IntentClassification[] = ['Interested', 'NotInterested', 'Question', 'Unclear', 'Stop'];
+const classificationOptions: IntentClassification[] = [
+  'Interested',
+  'NotInterested',
+  'Question',
+  'Unclear',
+  'Stop',
+  'AutomatedReply',
+];
 
 const classificationBadgeClass: Record<IntentClassification, string> = {
   Interested: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300',
@@ -65,6 +73,7 @@ const classificationBadgeClass: Record<IntentClassification, string> = {
   NotInterested: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300',
   Stop: 'bg-red-50 text-red-700 dark:bg-red-500/10 dark:text-red-300',
   Unclear: 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300',
+  AutomatedReply: 'bg-sky-50 text-sky-700 dark:bg-sky-500/10 dark:text-sky-300',
 };
 
 const selectClass =

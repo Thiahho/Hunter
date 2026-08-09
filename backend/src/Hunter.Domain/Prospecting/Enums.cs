@@ -12,7 +12,8 @@ public enum ProspectStatus
     Lead,
     Customer,
     Suppressed,
-    Invalid
+    Invalid,
+    AutoReplyDetected
 }
 
 public enum ProspectCategory

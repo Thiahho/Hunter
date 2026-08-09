@@ -37,6 +37,8 @@ public static class DependencyInjection
         services.AddScoped<IPasswordHasher, PasswordHasherAdapter>();
         services.AddScoped<IJwtTokenService, JwtTokenService>();
         services.AddScoped<IIntentClassifier, KeywordIntentClassifier>();
+        services.AddScoped<IAutoReplyDetector, AutoReplyDetector>();
+        services.Configure<AutoReplyFollowUpOptions>(configuration.GetSection(AutoReplyFollowUpOptions.SectionName));
 
         services.Configure<WhatsAppCloudApiOptions>(configuration.GetSection(WhatsAppCloudApiOptions.SectionName));
         var whatsAppOptions = configuration.GetSection(WhatsAppCloudApiOptions.SectionName).Get<WhatsAppCloudApiOptions>();

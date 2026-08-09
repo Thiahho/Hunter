@@ -7,6 +7,7 @@ using Hunter.Infrastructure.Messaging;
 using Hunter.Tests.TestSupport;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 
 namespace Hunter.Tests.Integration;
 
@@ -54,7 +55,7 @@ public class InterestDetectionTests
         }
 
         await using var db = TestDb.Create(dbName, organizationId: null);
-        var service = new InboundMessageService(db, new KeywordIntentClassifier(), new StubMessageProvider(NullLogger<StubMessageProvider>.Instance), new RecordingTelegramNotifier(), NullLogger<InboundMessageService>.Instance);
+        var service = new InboundMessageService(db, new KeywordIntentClassifier(), new AutoReplyDetector(db), Options.Create(new AutoReplyFollowUpOptions()), new StubMessageProvider(NullLogger<StubMessageProvider>.Instance), new RecordingTelegramNotifier(), NullLogger<InboundMessageService>.Instance);
 
         var request = new InboundMessageRequest(orgId, "5491112345678", "me interesa, pasame informacion", ExternalInboundId: "wh-1");
         var result = await service.ProcessAsync(request);
@@ -105,14 +106,14 @@ public class InterestDetectionTests
         int? firstLeadId;
         await using (var db1 = TestDb.Create(dbName, organizationId: null))
         {
-            var result1 = await new InboundMessageService(db1, new KeywordIntentClassifier(), new StubMessageProvider(NullLogger<StubMessageProvider>.Instance), new RecordingTelegramNotifier(), NullLogger<InboundMessageService>.Instance).ProcessAsync(request);
+            var result1 = await new InboundMessageService(db1, new KeywordIntentClassifier(), new AutoReplyDetector(db1), Options.Create(new AutoReplyFollowUpOptions()), new StubMessageProvider(NullLogger<StubMessageProvider>.Instance), new RecordingTelegramNotifier(), NullLogger<InboundMessageService>.Instance).ProcessAsync(request);
             Assert.True(result1.Succeeded);
             firstLeadId = result1.Value!.LeadId;
         }
 
         await using (var db2 = TestDb.Create(dbName, organizationId: null))
         {
-            var result2 = await new InboundMessageService(db2, new KeywordIntentClassifier(), new StubMessageProvider(NullLogger<StubMessageProvider>.Instance), new RecordingTelegramNotifier(), NullLogger<InboundMessageService>.Instance).ProcessAsync(request);
+            var result2 = await new InboundMessageService(db2, new KeywordIntentClassifier(), new AutoReplyDetector(db2), Options.Create(new AutoReplyFollowUpOptions()), new StubMessageProvider(NullLogger<StubMessageProvider>.Instance), new RecordingTelegramNotifier(), NullLogger<InboundMessageService>.Instance).ProcessAsync(request);
             Assert.True(result2.Succeeded);
             Assert.Equal(firstLeadId, result2.Value!.LeadId);
         }
@@ -158,7 +159,7 @@ public class InterestDetectionTests
         }
 
         await using var db = TestDb.Create(dbName, organizationId: null);
-        var service = new InboundMessageService(db, new KeywordIntentClassifier(), new StubMessageProvider(NullLogger<StubMessageProvider>.Instance), new RecordingTelegramNotifier(), NullLogger<InboundMessageService>.Instance);
+        var service = new InboundMessageService(db, new KeywordIntentClassifier(), new AutoReplyDetector(db), Options.Create(new AutoReplyFollowUpOptions()), new StubMessageProvider(NullLogger<StubMessageProvider>.Instance), new RecordingTelegramNotifier(), NullLogger<InboundMessageService>.Instance);
 
         var request = new InboundMessageRequest(orgId, "5491122602000", "hola me interesa", ExternalInboundId: "wh-9-fallback");
         var result = await service.ProcessAsync(request);
@@ -198,7 +199,7 @@ public class InterestDetectionTests
         }
 
         await using var db = TestDb.Create(dbName, organizationId: null);
-        var result = await new InboundMessageService(db, new KeywordIntentClassifier(), new StubMessageProvider(NullLogger<StubMessageProvider>.Instance), new RecordingTelegramNotifier(), NullLogger<InboundMessageService>.Instance)
+        var result = await new InboundMessageService(db, new KeywordIntentClassifier(), new AutoReplyDetector(db), Options.Create(new AutoReplyFollowUpOptions()), new StubMessageProvider(NullLogger<StubMessageProvider>.Instance), new RecordingTelegramNotifier(), NullLogger<InboundMessageService>.Instance)
             .ProcessAsync(new InboundMessageRequest(orgId, "5491198765432", "no me contacten mas, borrame"));
 
         Assert.True(result.Succeeded);

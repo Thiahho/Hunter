@@ -9,12 +9,15 @@ using Hunter.Domain.Prospecting;
 using Hunter.Shared;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace Hunter.Application.Campaigning;
 
 public class InboundMessageService(
     IHunterDbContext db,
     IIntentClassifier intentClassifier,
+    IAutoReplyDetector autoReplyDetector,
+    IOptions<AutoReplyFollowUpOptions> autoReplyOptions,
     IMessageProvider messageProvider,
     ITelegramNotifier telegramNotifier,
     ILogger<InboundMessageService> logger) : IInboundMessageService
@@ -26,6 +29,11 @@ public class InboundMessageService(
     // cualquier frase, así que se registra aparte para poder distinguirla en auditoría.
     private const string QuickReplyModelName = "quick-reply-button-v1";
     private const string QuickReplyPromptVersion = "n/a";
+
+    // Idem para cuando IAutoReplyDetector detecta un auto-responder antes de llegar a
+    // IIntentClassifier.
+    private const string AutoReplyModelName = "auto-reply-heuristic-v1";
+    private const string AutoReplyPromptVersion = "n/a";
 
     public async Task<Result<InboundMessageResultDto>> ProcessAsync(InboundMessageRequest request, CancellationToken ct = default)
     {
@@ -97,6 +105,11 @@ public class InboundMessageService(
         var isInterestButtonTap = request.ButtonPayload is not null
             && QuickReplyButtonMapper.IsInterestTap(request.ButtonPayload, request.Content);
 
+        // Un tap de botón es una señal explícita del prospecto: nunca se evalúa auto-respuesta
+        // sobre eso (Meta no manda taps de quick-reply desde un auto-responder).
+        var isAutomatedReply = !isInterestButtonTap
+            && await autoReplyDetector.IsLikelyAutomatedAsync(request.OrganizationId, request.Content, ct);
+
         // Tocar el botón "Estoy interesado" es una señal de compra más fuerte y determinista
         // que cualquier frase del clasificador de reglas: se sintetiza Interested con confianza
         // máxima en vez de pasar por IIntentClassifier. No toca Prospect.Category: con un solo
@@ -104,7 +117,9 @@ public class InboundMessageService(
         // sigue leyendo Category tal cual esté cargado de antes (import, carga manual, etc.).
         var classification = isInterestButtonTap
             ? new IntentClassificationResult(IntentClassification.Interested, 1.00m, QuickReplyModelName, QuickReplyPromptVersion)
-            : await intentClassifier.ClassifyAsync(request.Content, ct);
+            : isAutomatedReply
+                ? new IntentClassificationResult(IntentClassification.AutomatedReply, 1.00m, AutoReplyModelName, AutoReplyPromptVersion)
+                : await intentClassifier.ClassifyAsync(request.Content, ct);
 
         var effective = classification.Classification;
         if (effective is IntentClassification.Interested or IntentClassification.Question && classification.Confidence < ConfidenceThreshold)
@@ -164,6 +179,16 @@ public class InboundMessageService(
                 if (recipient is not null) recipient.Status = CampaignRecipientStatus.Interested;
 
                 (lead, leadCreated) = await CreateOrReuseLeadAsync(request.OrganizationId, prospect, campaignId, effective, ct);
+                break;
+
+            case IntentClassification.AutomatedReply:
+                // No se crea Lead ni se notifica al vendedor: sería spamear con charla de bot.
+                // Sí se cuenta como Responded a nivel campaña (hubo una respuesta), pero el
+                // prospecto queda en un estado propio y visible en vez de darlo por respondido.
+                prospect.Status = ProspectStatus.AutoReplyDetected;
+                if (recipient is not null) recipient.Status = CampaignRecipientStatus.Responded;
+
+                await ScheduleAutoReplyFollowUpAsync(request.OrganizationId, prospect, ct);
                 break;
 
             default:
@@ -269,6 +294,47 @@ public class InboundMessageService(
             SentAt = sendResult.Success ? DateTimeOffset.UtcNow : null,
             FailedAt = sendResult.Success ? null : DateTimeOffset.UtcNow
         });
+    }
+
+    // Programa UN nudge de reintento (ScheduledMessage) para intentar atravesar el auto-responder
+    // del prospecto y llegar a un humano. Reutiliza el mismo camino de envío que "Programar
+    // mensaje" (ScheduledMessageBackgroundService + ScheduledMessageService.RunAsync), con
+    // Source=AutoReplyRetry y sin usuario detrás. Tope en Prospect.AutoReplyAttempts: agotado, se
+    // deja de reintentar solo y el prospecto queda para revisión manual.
+    private async Task ScheduleAutoReplyFollowUpAsync(int organizationId, Prospect prospect, CancellationToken ct)
+    {
+        if (prospect.AutoReplyAttempts >= autoReplyOptions.Value.MaxAutoReplyAttempts)
+        {
+            logger.LogInformation(
+                "[AutoReply] Prospecto {ProspectId} ya alcanzó el tope de {Max} reintentos automáticos, no se programa otro.",
+                prospect.Id, autoReplyOptions.Value.MaxAutoReplyAttempts);
+            return;
+        }
+
+        var followUpTemplate = await db.MessageTemplates.IgnoreQueryFilters()
+            .Where(t => t.OrganizationId == organizationId && t.IsFollowUpTemplate && t.IsActive)
+            .FirstOrDefaultAsync(ct);
+
+        if (followUpTemplate is null)
+        {
+            logger.LogWarning(
+                "[AutoReply] Prospecto {ProspectId}: se detectó un auto-responder pero la organización {OrganizationId} no tiene una plantilla de seguimiento activa (IsFollowUpTemplate=true). No se programó ningún reintento.",
+                prospect.Id, organizationId);
+            return;
+        }
+
+        db.ScheduledMessages.Add(new ScheduledMessage
+        {
+            OrganizationId = organizationId,
+            CreatedByUserId = null,
+            Source = ScheduledMessageSource.AutoReplyRetry,
+            ProspectId = prospect.Id,
+            MessageTemplateId = followUpTemplate.Id,
+            ScheduledAt = DateTimeOffset.UtcNow.AddHours(autoReplyOptions.Value.DelayHours),
+            Status = ScheduledMessageStatus.Pending
+        });
+
+        prospect.AutoReplyAttempts++;
     }
 
     private async Task<(Lead Lead, bool Created)> CreateOrReuseLeadAsync(

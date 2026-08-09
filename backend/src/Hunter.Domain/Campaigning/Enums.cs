@@ -49,5 +49,6 @@ public enum IntentClassification
     NotInterested,
     Question,
     Unclear,
-    Stop
+    Stop,
+    AutomatedReply
 }

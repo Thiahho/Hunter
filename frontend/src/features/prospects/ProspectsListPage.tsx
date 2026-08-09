@@ -53,6 +53,7 @@ const statuses: ProspectStatus[] = [
   'Customer',
   'Suppressed',
   'Invalid',
+  'AutoReplyDetected',
 ];
 
 const statusLabels: Record<ProspectStatus, string> = {
@@ -67,6 +68,7 @@ const statusLabels: Record<ProspectStatus, string> = {
   Customer: 'Cliente',
   Suppressed: 'Suprimido',
   Invalid: 'Inválido',
+  AutoReplyDetected: 'Bot detectado — reintentando',
 };
 
 const PAGE_SIZE = 20;

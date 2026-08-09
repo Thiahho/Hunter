@@ -13,6 +13,7 @@ export interface ScheduledMessageDto {
   runAt: string | null;
   messageId: number | null;
   failureReason: string | null;
+  source: string;
   createdAt: string;
 }
 
