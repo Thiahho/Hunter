@@ -45,7 +45,7 @@ public class TestMessageService(
 
         var content = TemplateRenderer.Render(request.Content, prospect);
         var sendResult = await messageProvider.SendAsync(
-            new SendMessageRequest(MessagingChannel.Whatsapp, contact.Value, content, prospect.BusinessName), ct);
+            new SendMessageRequest(MessagingChannel.Whatsapp, contact.Value, content, prospect.BusinessName, PreferFreeText: request.PreferFreeText), ct);
 
         var message = new Message
         {

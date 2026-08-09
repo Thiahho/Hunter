@@ -89,8 +89,12 @@ public class ScheduledMessageService(
 
         try
         {
+            // PreferFreeText: true porque todo lo que pasa por acá (reintento de auto-reply o
+            // "Programar mensaje" manual) es siempre una respuesta a un prospecto que ya escribió
+            // antes, nunca contacto en frío: sin esto, con WhatsAppCloudApi:TemplateName
+            // configurado, se reenviaría la plantilla de campaña en vez del contenido elegido.
             var sendResult = await testMessageService.SendAsync(
-                scheduled.ProspectId, new SendTestMessageRequest(scheduled.MessageTemplate.Content), ct);
+                scheduled.ProspectId, new SendTestMessageRequest(scheduled.MessageTemplate.Content, PreferFreeText: true), ct);
 
             if (!sendResult.Succeeded)
             {
