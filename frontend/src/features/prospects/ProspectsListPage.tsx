@@ -152,7 +152,7 @@ export function ProspectsListPage() {
       <div className="flex flex-wrap gap-3">
         <input
           type="text"
-          placeholder="Buscar por nombre..."
+          placeholder="Buscar por nombre, contacto, ubicación o número..."
           value={search}
           onChange={(e) => {
             setSearch(e.target.value);

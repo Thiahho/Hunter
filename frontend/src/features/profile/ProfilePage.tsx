@@ -95,7 +95,7 @@ export function ProfilePage() {
 
           <div>
             <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Apellido</label>
-            <input type="text" required value={lastName} onChange={(e) => setLastName(e.target.value)} className={inputClass} />
+            <input type="text" value={lastName} onChange={(e) => setLastName(e.target.value)} className={inputClass} />
           </div>
 
           <div>

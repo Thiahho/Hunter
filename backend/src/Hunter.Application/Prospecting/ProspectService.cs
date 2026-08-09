@@ -116,7 +116,13 @@ public class ProspectService(IHunterDbContext db, ICurrentUserService currentUse
         if (!string.IsNullOrWhiteSpace(query.Search))
         {
             var search = query.Search.Trim().ToLowerInvariant();
-            prospects = prospects.Where(p => p.BusinessName.ToLower().Contains(search));
+            prospects = prospects.Where(p =>
+                p.BusinessName.ToLower().Contains(search)
+                || (p.ContactName != null && p.ContactName.ToLower().Contains(search))
+                || (p.Address != null && p.Address.ToLower().Contains(search))
+                || (p.City != null && p.City.ToLower().Contains(search))
+                || (p.Province != null && p.Province.ToLower().Contains(search))
+                || p.Contacts.Any(c => c.Value.ToLower().Contains(search)));
         }
 
         if (query.Category is not null)
