@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router';
 import {
@@ -83,6 +83,20 @@ const classificationBadgeClass: Record<IntentClassification, string> = {
 const selectClass =
   'rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-1.5 text-sm text-slate-900 dark:text-slate-100';
 
+const textInputClass =
+  'rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-1.5 text-sm text-slate-900 dark:text-slate-100 placeholder:text-slate-400';
+
+// Se actualiza el input local en cada tecla pero solo se dispara la búsqueda (y el refetch)
+// 400ms después de la última tecla, para no pegarle una query al backend por cada carácter.
+function useDebouncedValue<T>(value: T, delayMs = 400): T {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const timeout = setTimeout(() => setDebounced(value), delayMs);
+    return () => clearTimeout(timeout);
+  }, [value, delayMs]);
+  return debounced;
+}
+
 function Pager({ page, totalPages, onChange }: { page: number; totalPages: number; onChange: (page: number) => void }) {
   return (
     <div className="flex items-center justify-end gap-2 text-sm text-slate-500 dark:text-slate-400">
@@ -112,13 +126,15 @@ type PendingMessageDeletion = { kind: 'single'; message: MessageDto } | { kind: 
 function SentMessagesTab() {
   const queryClient = useQueryClient();
   const [status, setStatus] = useState<MessageStatus | ''>('');
+  const [search, setSearch] = useState('');
+  const debouncedSearch = useDebouncedValue(search);
   const [page, setPage] = useState(1);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [pendingDeletion, setPendingDeletion] = useState<PendingMessageDeletion | null>(null);
 
   const query = useQuery({
-    queryKey: ['messages', { status, page }],
-    queryFn: () => searchMessages({ status: status || undefined, page, pageSize: PAGE_SIZE }),
+    queryKey: ['messages', { status, search: debouncedSearch, page }],
+    queryFn: () => searchMessages({ status: status || undefined, search: debouncedSearch || undefined, page, pageSize: PAGE_SIZE }),
     placeholderData: (previous) => previous,
     refetchInterval: 15000,
   });
@@ -166,7 +182,17 @@ function SentMessagesTab() {
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <input
+          type="text"
+          value={search}
+          onChange={(e) => {
+            setSearch(e.target.value);
+            changePage(1);
+          }}
+          placeholder="Buscar por nombre o teléfono..."
+          className={textInputClass}
+        />
         <select
           value={status}
           onChange={(e) => {
@@ -229,6 +255,7 @@ function SentMessagesTab() {
                     />
                   </th>
                   <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">Destinatario</th>
+                  <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">Teléfono</th>
                   <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">Canal</th>
                   <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">Mensaje</th>
                   <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">Estado</th>
@@ -256,6 +283,7 @@ function SentMessagesTab() {
                         {m.prospectBusinessName}
                       </Link>
                     </td>
+                    <td className="px-4 py-2 text-slate-600 dark:text-slate-300">{m.prospectPhone ?? '—'}</td>
                     <td className="px-4 py-2 text-slate-600 dark:text-slate-300">{m.channel}</td>
                     <td className="px-4 py-2 max-w-md truncate text-slate-600 dark:text-slate-300" title={m.content}>
                       {m.content}
@@ -285,7 +313,7 @@ function SentMessagesTab() {
                 ))}
                 {query.data.items.length === 0 && (
                   <tr>
-                    <td colSpan={7} className="px-4 py-6 text-center text-slate-400">
+                    <td colSpan={8} className="px-4 py-6 text-center text-slate-400">
                       Sin mensajes.
                     </td>
                   </tr>
@@ -371,13 +399,15 @@ async function deleteOne(r: CampaignRecipientDto): Promise<void> {
 function NotSentTab() {
   const queryClient = useQueryClient();
   const [status, setStatus] = useState<CampaignRecipientStatus>('Failed');
+  const [search, setSearch] = useState('');
+  const debouncedSearch = useDebouncedValue(search);
   const [page, setPage] = useState(1);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [pendingDeletion, setPendingDeletion] = useState<PendingRecipientDeletion | null>(null);
 
   const query = useQuery({
-    queryKey: ['campaign-recipients', { status, page }],
-    queryFn: () => searchCampaignRecipients({ status, page, pageSize: PAGE_SIZE }),
+    queryKey: ['campaign-recipients', { status, search: debouncedSearch, page }],
+    queryFn: () => searchCampaignRecipients({ status, search: debouncedSearch || undefined, page, pageSize: PAGE_SIZE }),
     placeholderData: (previous) => previous,
     refetchInterval: 15000,
   });
@@ -439,7 +469,17 @@ function NotSentTab() {
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <input
+          type="text"
+          value={search}
+          onChange={(e) => {
+            setSearch(e.target.value);
+            changePage(1);
+          }}
+          placeholder="Buscar por nombre o teléfono..."
+          className={textInputClass}
+        />
         <select
           value={status}
           onChange={(e) => {
@@ -523,6 +563,7 @@ function NotSentTab() {
                     />
                   </th>
                   <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">Destinatario</th>
+                  <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">Teléfono</th>
                   <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">Campaña</th>
                   <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">Estado</th>
                   <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">Intentos</th>
@@ -550,6 +591,7 @@ function NotSentTab() {
                         {r.prospectBusinessName}
                       </Link>
                     </td>
+                    <td className="px-4 py-2 text-slate-600 dark:text-slate-300">{r.prospectPhone ?? '—'}</td>
                     <td className="px-4 py-2 text-slate-600 dark:text-slate-300">
                       {r.campaignName ?? <span title="Envío individual, no pertenece a una campaña">Envío individual</span>}
                     </td>
@@ -591,7 +633,7 @@ function NotSentTab() {
                 ))}
                 {query.data.items.length === 0 && (
                   <tr>
-                    <td colSpan={7} className="px-4 py-6 text-center text-slate-400">
+                    <td colSpan={8} className="px-4 py-6 text-center text-slate-400">
                       Sin destinatarios en este estado.
                     </td>
                   </tr>
@@ -622,11 +664,10 @@ function NotSentTab() {
   );
 }
 
-const dailyInputClass =
-  'rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-1.5 text-sm text-slate-900 dark:text-slate-100 placeholder:text-slate-400';
-
 function DailyProspectsTab() {
   const queryClient = useQueryClient();
+  const [search, setSearch] = useState('');
+  const debouncedSearch = useDebouncedValue(search);
   const [province, setProvince] = useState('');
   const [city, setCity] = useState('');
   const [sentFilter, setSentFilter] = useState<'' | 'true' | 'false'>('');
@@ -635,9 +676,10 @@ function DailyProspectsTab() {
   const [sendTargetIds, setSendTargetIds] = useState<number[] | null>(null);
 
   const query = useQuery({
-    queryKey: ['daily-prospects', { province, city, sentFilter, page }],
+    queryKey: ['daily-prospects', { search: debouncedSearch, province, city, sentFilter, page }],
     queryFn: () =>
       searchDailyProspects({
+        search: debouncedSearch || undefined,
         province: province.trim() || undefined,
         city: city.trim() || undefined,
         sent: sentFilter === '' ? undefined : sentFilter === 'true',
@@ -698,13 +740,23 @@ function DailyProspectsTab() {
       <div className="flex flex-wrap items-center gap-2">
         <input
           type="text"
+          value={search}
+          onChange={(e) => {
+            setSearch(e.target.value);
+            changePage(1);
+          }}
+          placeholder="Buscar por nombre o teléfono..."
+          className={textInputClass}
+        />
+        <input
+          type="text"
           value={province}
           onChange={(e) => {
             setProvince(e.target.value);
             changePage(1);
           }}
           placeholder="Provincia"
-          className={dailyInputClass}
+          className={textInputClass}
         />
         <input
           type="text"
@@ -714,7 +766,7 @@ function DailyProspectsTab() {
             changePage(1);
           }}
           placeholder="Localidad"
-          className={dailyInputClass}
+          className={textInputClass}
         />
         <select
           value={sentFilter}
@@ -805,6 +857,7 @@ function DailyProspectsTab() {
                     />
                   </th>
                   <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">Prospecto</th>
+                  <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">Teléfono</th>
                   <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">Provincia</th>
                   <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">Localidad</th>
                   <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">Enviado</th>
@@ -833,6 +886,7 @@ function DailyProspectsTab() {
                         {p.businessName}
                       </Link>
                     </td>
+                    <td className="px-4 py-2 text-slate-600 dark:text-slate-300">{p.phone ?? '—'}</td>
                     <td className="px-4 py-2 text-slate-600 dark:text-slate-300">{p.province ?? '—'}</td>
                     <td className="px-4 py-2 text-slate-600 dark:text-slate-300">{p.city ?? '—'}</td>
                     <td className="px-4 py-2">
@@ -880,7 +934,7 @@ function DailyProspectsTab() {
                 ))}
                 {query.data.items.length === 0 && (
                   <tr>
-                    <td colSpan={8} className="px-4 py-6 text-center text-slate-400">
+                    <td colSpan={9} className="px-4 py-6 text-center text-slate-400">
                       Sin prospectos nuevos hoy con estos filtros.
                     </td>
                   </tr>
@@ -915,13 +969,16 @@ type PendingResponseDeletion =
 function ResponsesTab() {
   const queryClient = useQueryClient();
   const [classification, setClassification] = useState<IntentClassification | ''>('');
+  const [search, setSearch] = useState('');
+  const debouncedSearch = useDebouncedValue(search);
   const [page, setPage] = useState(1);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [pendingDeletion, setPendingDeletion] = useState<PendingResponseDeletion | null>(null);
 
   const query = useQuery({
-    queryKey: ['message-responses', { classification, page }],
-    queryFn: () => searchMessageResponses({ classification: classification || undefined, page, pageSize: PAGE_SIZE }),
+    queryKey: ['message-responses', { classification, search: debouncedSearch, page }],
+    queryFn: () =>
+      searchMessageResponses({ classification: classification || undefined, search: debouncedSearch || undefined, page, pageSize: PAGE_SIZE }),
     placeholderData: (previous) => previous,
     refetchInterval: 15000,
   });
@@ -969,7 +1026,17 @@ function ResponsesTab() {
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <input
+          type="text"
+          value={search}
+          onChange={(e) => {
+            setSearch(e.target.value);
+            changePage(1);
+          }}
+          placeholder="Buscar por nombre o teléfono..."
+          className={textInputClass}
+        />
         <select
           value={classification}
           onChange={(e) => {
@@ -1032,6 +1099,7 @@ function ResponsesTab() {
                     />
                   </th>
                   <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">Prospecto</th>
+                  <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">Teléfono</th>
                   <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">Respuesta</th>
                   <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">Clasificación</th>
                   <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">Origen</th>
@@ -1059,6 +1127,7 @@ function ResponsesTab() {
                         {r.prospectBusinessName}
                       </Link>
                     </td>
+                    <td className="px-4 py-2 text-slate-600 dark:text-slate-300">{r.prospectPhone ?? '—'}</td>
                     <td className="px-4 py-2 max-w-md truncate text-slate-600 dark:text-slate-300" title={r.content}>
                       {r.content || '—'}
                     </td>
@@ -1087,7 +1156,7 @@ function ResponsesTab() {
                 ))}
                 {query.data.items.length === 0 && (
                   <tr>
-                    <td colSpan={7} className="px-4 py-6 text-center text-slate-400">
+                    <td colSpan={8} className="px-4 py-6 text-center text-slate-400">
                       Sin respuestas todavía.
                     </td>
                   </tr>

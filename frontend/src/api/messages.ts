@@ -9,6 +9,7 @@ export interface MessageDto {
   id: number;
   prospectId: number;
   prospectBusinessName: string;
+  prospectPhone: string | null;
   campaignId: number | null;
   channel: MessagingChannel;
   content: string;
@@ -28,6 +29,7 @@ export interface MessageResponseDto {
   id: number;
   prospectId: number;
   prospectBusinessName: string;
+  prospectPhone: string | null;
   campaignId: number | null;
   messageId: number | null;
   content: string;
@@ -39,6 +41,7 @@ export interface MessageResponseDto {
 }
 
 export interface MessageQuery {
+  search?: string;
   campaignId?: number;
   prospectId?: number;
   status?: MessageStatus;
@@ -47,6 +50,7 @@ export interface MessageQuery {
 }
 
 export interface MessageResponseQuery {
+  search?: string;
   campaignId?: number;
   prospectId?: number;
   classification?: IntentClassification;
@@ -71,6 +75,7 @@ export interface DailyProspectDto {
 }
 
 export interface DailyProspectQuery {
+  search?: string;
   date?: string;
   province?: string;
   city?: string;

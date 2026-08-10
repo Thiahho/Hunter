@@ -9,13 +9,20 @@ namespace Hunter.Application.Campaigning;
 public class MessageQueryService(IHunterDbContext db) : IMessageQueryService
 {
     public async Task<PagedResult<MessageDto>> SearchAsync(
-        int? campaignId, int? prospectId, MessageStatus? status, int page, int pageSize, CancellationToken ct = default)
+        string? search, int? campaignId, int? prospectId, MessageStatus? status, int page, int pageSize, CancellationToken ct = default)
     {
         page = page < 1 ? 1 : page;
         pageSize = pageSize is < 1 or > 200 ? 50 : pageSize;
 
         var messages = db.Messages.AsQueryable();
 
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var term = search.Trim().ToLowerInvariant();
+            messages = messages.Where(m =>
+                m.Prospect.BusinessName.ToLower().Contains(term)
+                || m.Prospect.Contacts.Any(c => c.Value.ToLower().Contains(term)));
+        }
         if (campaignId is not null)
             messages = messages.Where(m => m.CampaignId == campaignId);
         if (prospectId is not null)
@@ -30,7 +37,10 @@ public class MessageQueryService(IHunterDbContext db) : IMessageQueryService
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .Select(m => new MessageDto(
-                m.Id, m.ProspectId, m.Prospect.BusinessName, m.CampaignId, m.Channel, m.Content, m.Status, m.ExternalMessageId,
+                m.Id, m.ProspectId, m.Prospect.BusinessName,
+                m.Prospect.Contacts.Where(c => c.IsPrimary).Select(c => c.Value).FirstOrDefault()
+                    ?? m.Prospect.Contacts.Select(c => c.Value).FirstOrDefault(),
+                m.CampaignId, m.Channel, m.Content, m.Status, m.ExternalMessageId,
                 m.SentAt, m.DeliveredAt, m.ReadAt, m.FailedAt, m.FailureReason, m.Cost, m.Currency, m.CreatedAt))
             .ToListAsync(ct);
 
@@ -38,7 +48,7 @@ public class MessageQueryService(IHunterDbContext db) : IMessageQueryService
     }
 
     public async Task<PagedResult<DailyProspectDto>> SearchDailyAsync(
-        DateOnly? date, string? province, string? city, bool? sent, int page, int pageSize, CancellationToken ct = default)
+        string? search, DateOnly? date, string? province, string? city, bool? sent, int page, int pageSize, CancellationToken ct = default)
     {
         page = page < 1 ? 1 : page;
         pageSize = pageSize is < 1 or > 200 ? 50 : pageSize;
@@ -49,6 +59,13 @@ public class MessageQueryService(IHunterDbContext db) : IMessageQueryService
 
         var prospects = db.Prospects.Where(p => !p.IsDeleted && p.CreatedAt >= rangeStart && p.CreatedAt < rangeEnd);
 
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var term = search.Trim().ToLowerInvariant();
+            prospects = prospects.Where(p =>
+                p.BusinessName.ToLower().Contains(term)
+                || p.Contacts.Any(c => c.Value.ToLower().Contains(term)));
+        }
         if (!string.IsNullOrWhiteSpace(province))
             prospects = prospects.Where(p => p.Province == province);
         if (!string.IsNullOrWhiteSpace(city))

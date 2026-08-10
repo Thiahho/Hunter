@@ -67,6 +67,7 @@ public record CampaignRecipientDto(
     string? CampaignName,
     int ProspectId,
     string ProspectBusinessName,
+    string? ProspectPhone,
     CampaignRecipientStatus Status,
     int Attempts,
     DateTimeOffset? LastAttemptAt,

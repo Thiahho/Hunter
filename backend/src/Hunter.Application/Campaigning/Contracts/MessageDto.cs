@@ -6,6 +6,7 @@ public record MessageDto(
     int Id,
     int ProspectId,
     string ProspectBusinessName,
+    string? ProspectPhone,
     int? CampaignId,
     MessagingChannel Channel,
     string Content,

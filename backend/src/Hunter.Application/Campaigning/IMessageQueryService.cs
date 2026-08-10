@@ -7,13 +7,13 @@ namespace Hunter.Application.Campaigning;
 public interface IMessageQueryService
 {
     Task<PagedResult<MessageDto>> SearchAsync(
-        int? campaignId, int? prospectId, MessageStatus? status, int page, int pageSize, CancellationToken ct = default);
+        string? search, int? campaignId, int? prospectId, MessageStatus? status, int page, int pageSize, CancellationToken ct = default);
 
     // "Prospectos del día" = prospectos creados (importados/scrapeados) en la fecha dada (hoy si
     // no se especifica), con su estado de contacto agregado desde Message. No filtra por
     // OrganizationId explícito porque HunterDbContext ya aplica el query filter global.
     Task<PagedResult<DailyProspectDto>> SearchDailyAsync(
-        DateOnly? date, string? province, string? city, bool? sent, int page, int pageSize, CancellationToken ct = default);
+        string? search, DateOnly? date, string? province, string? city, bool? sent, int page, int pageSize, CancellationToken ct = default);
 
     Task<IReadOnlyCollection<FailedContactDto>> GetFailedContactsAsync(
         DateOnly? date, string? province, string? city, CancellationToken ct = default);

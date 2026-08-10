@@ -7,7 +7,7 @@ namespace Hunter.Application.Campaigning;
 public interface IMessageResponseQueryService
 {
     Task<PagedResult<MessageResponseDto>> SearchAsync(
-        int? campaignId, int? prospectId, IntentClassification? classification, int page, int pageSize, CancellationToken ct = default);
+        string? search, int? campaignId, int? prospectId, IntentClassification? classification, int page, int pageSize, CancellationToken ct = default);
 
     Task<Result<bool>> DeleteAsync(int id, CancellationToken ct = default);
     Task<Result<int>> DeleteManyAsync(IReadOnlyCollection<int> ids, CancellationToken ct = default);

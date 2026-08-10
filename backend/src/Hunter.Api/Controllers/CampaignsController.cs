@@ -101,10 +101,10 @@ public class CampaignsController(ICampaignService campaignService) : ControllerB
 
     [HttpGet("recipients")]
     public async Task<IActionResult> SearchRecipients(
-        [FromQuery] int? campaignId, [FromQuery] CampaignRecipientStatus? status,
+        [FromQuery] string? search, [FromQuery] int? campaignId, [FromQuery] CampaignRecipientStatus? status,
         [FromQuery] int page = 1, [FromQuery] int pageSize = 50, CancellationToken ct = default)
     {
-        var result = await campaignService.SearchRecipientsAsync(campaignId, status, page, pageSize, ct);
+        var result = await campaignService.SearchRecipientsAsync(search, campaignId, status, page, pageSize, ct);
         return Ok(ApiResponse<PagedResult<CampaignRecipientDto>>.Ok(result));
     }
 

@@ -19,7 +19,7 @@ public interface ICampaignService
 
     Task<Result<ProcessQueueResultDto>> ProcessQueueAsync(int campaignId, int batchSize = 50, CancellationToken ct = default);
 
-    Task<PagedResult<CampaignRecipientDto>> SearchRecipientsAsync(int? campaignId, CampaignRecipientStatus? status, int page, int pageSize, CancellationToken ct = default);
+    Task<PagedResult<CampaignRecipientDto>> SearchRecipientsAsync(string? search, int? campaignId, CampaignRecipientStatus? status, int page, int pageSize, CancellationToken ct = default);
     Task<Result<RetryRecipientsResultDto>> RetryRecipientsAsync(RetryRecipientsRequest request, CancellationToken ct = default);
     Task<Result<bool>> DeleteRecipientAsync(int id, CancellationToken ct = default);
     Task<Result<int>> DeleteRecipientsAsync(IReadOnlyCollection<int> recipientIds, CancellationToken ct = default);

@@ -9,13 +9,20 @@ namespace Hunter.Application.Campaigning;
 public class MessageResponseQueryService(IHunterDbContext db) : IMessageResponseQueryService
 {
     public async Task<PagedResult<MessageResponseDto>> SearchAsync(
-        int? campaignId, int? prospectId, IntentClassification? classification, int page, int pageSize, CancellationToken ct = default)
+        string? search, int? campaignId, int? prospectId, IntentClassification? classification, int page, int pageSize, CancellationToken ct = default)
     {
         page = page < 1 ? 1 : page;
         pageSize = pageSize is < 1 or > 200 ? 50 : pageSize;
 
         var responses = db.MessageResponses.AsQueryable();
 
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var term = search.Trim().ToLowerInvariant();
+            responses = responses.Where(r =>
+                r.Prospect.BusinessName.ToLower().Contains(term)
+                || r.Prospect.Contacts.Any(c => c.Value.ToLower().Contains(term)));
+        }
         if (campaignId is not null)
             responses = responses.Where(r => r.CampaignId == campaignId);
         if (prospectId is not null)
@@ -30,7 +37,10 @@ public class MessageResponseQueryService(IHunterDbContext db) : IMessageResponse
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .Select(r => new MessageResponseDto(
-                r.Id, r.ProspectId, r.Prospect.BusinessName, r.CampaignId, r.MessageId, r.Content, r.ReceivedAt,
+                r.Id, r.ProspectId, r.Prospect.BusinessName,
+                r.Prospect.Contacts.Where(c => c.IsPrimary).Select(c => c.Value).FirstOrDefault()
+                    ?? r.Prospect.Contacts.Select(c => c.Value).FirstOrDefault(),
+                r.CampaignId, r.MessageId, r.Content, r.ReceivedAt,
                 r.Classification, r.Confidence, r.ButtonPayload, r.ProcessedAt))
             .ToListAsync(ct);
 

@@ -18,6 +18,7 @@ public class MessagesController(
 {
     [HttpGet]
     public async Task<IActionResult> Search(
+        [FromQuery] string? search,
         [FromQuery] int? campaignId,
         [FromQuery] int? prospectId,
         [FromQuery] MessageStatus? status,
@@ -25,7 +26,7 @@ public class MessagesController(
         [FromQuery] int pageSize = 50,
         CancellationToken ct = default)
     {
-        var result = await messageQueryService.SearchAsync(campaignId, prospectId, status, page, pageSize, ct);
+        var result = await messageQueryService.SearchAsync(search, campaignId, prospectId, status, page, pageSize, ct);
         return Ok(ApiResponse<PagedResult<MessageDto>>.Ok(result));
     }
 
@@ -34,6 +35,7 @@ public class MessagesController(
     // porque Message (salida) y MessageResponse (entrada) son entidades distintas.
     [HttpGet("responses")]
     public async Task<IActionResult> SearchResponses(
+        [FromQuery] string? search,
         [FromQuery] int? campaignId,
         [FromQuery] int? prospectId,
         [FromQuery] IntentClassification? classification,
@@ -41,12 +43,13 @@ public class MessagesController(
         [FromQuery] int pageSize = 50,
         CancellationToken ct = default)
     {
-        var result = await messageResponseQueryService.SearchAsync(campaignId, prospectId, classification, page, pageSize, ct);
+        var result = await messageResponseQueryService.SearchAsync(search, campaignId, prospectId, classification, page, pageSize, ct);
         return Ok(ApiResponse<PagedResult<MessageResponseDto>>.Ok(result));
     }
 
     [HttpGet("daily")]
     public async Task<IActionResult> SearchDaily(
+        [FromQuery] string? search,
         [FromQuery] DateOnly? date,
         [FromQuery] string? province,
         [FromQuery] string? city,
@@ -55,7 +58,7 @@ public class MessagesController(
         [FromQuery] int pageSize = 50,
         CancellationToken ct = default)
     {
-        var result = await messageQueryService.SearchDailyAsync(date, province, city, sent, page, pageSize, ct);
+        var result = await messageQueryService.SearchDailyAsync(search, date, province, city, sent, page, pageSize, ct);
         return Ok(ApiResponse<PagedResult<DailyProspectDto>>.Ok(result));
     }
 

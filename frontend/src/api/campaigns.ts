@@ -86,6 +86,7 @@ export interface CampaignRecipientDto {
   campaignName: string | null;
   prospectId: number;
   prospectBusinessName: string;
+  prospectPhone: string | null;
   status: CampaignRecipientStatus;
   attempts: number;
   lastAttemptAt: string | null;
@@ -98,6 +99,7 @@ export interface CampaignRecipientDto {
 }
 
 export interface CampaignRecipientQuery {
+  search?: string;
   campaignId?: number;
   status?: CampaignRecipientStatus;
   page?: number;

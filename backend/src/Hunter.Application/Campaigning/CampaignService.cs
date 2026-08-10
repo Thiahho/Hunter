@@ -274,16 +274,22 @@ public class CampaignService(
     }
 
     public async Task<PagedResult<CampaignRecipientDto>> SearchRecipientsAsync(
-        int? campaignId, CampaignRecipientStatus? status, int page, int pageSize, CancellationToken ct = default)
+        string? search, int? campaignId, CampaignRecipientStatus? status, int page, int pageSize, CancellationToken ct = default)
     {
         page = page < 1 ? 1 : page;
         pageSize = pageSize is < 1 or > 200 ? 50 : pageSize;
+
+        var term = string.IsNullOrWhiteSpace(search) ? null : search.Trim().ToLowerInvariant();
 
         var recipients = db.CampaignRecipients.AsQueryable();
         if (campaignId is not null)
             recipients = recipients.Where(r => r.CampaignId == campaignId);
         if (status is not null)
             recipients = recipients.Where(r => r.Status == status);
+        if (term is not null)
+            recipients = recipients.Where(r =>
+                r.Prospect.BusinessName.ToLower().Contains(term)
+                || r.Prospect.Contacts.Any(c => c.Value.ToLower().Contains(term)));
 
         var recipientDtos = await recipients
             .Select(r => new CampaignRecipientDto(
@@ -292,6 +298,8 @@ public class CampaignService(
                 r.Campaign.Name,
                 r.ProspectId,
                 r.Prospect.BusinessName,
+                r.Prospect.Contacts.Where(c => c.IsPrimary).Select(c => c.Value).FirstOrDefault()
+                    ?? r.Prospect.Contacts.Select(c => c.Value).FirstOrDefault(),
                 r.Status,
                 r.Attempts,
                 r.LastAttemptAt,
@@ -317,6 +325,10 @@ public class CampaignService(
                 CampaignRecipientStatus.Pending => adHocMessages.Where(m => m.Status == MessageStatus.Pending),
                 _ => adHocMessages.Where(m => m.Status == MessageStatus.Failed || m.Status == MessageStatus.Pending)
             };
+            if (term is not null)
+                adHocMessages = adHocMessages.Where(m =>
+                    m.Prospect.BusinessName.ToLower().Contains(term)
+                    || m.Prospect.Contacts.Any(c => c.Value.ToLower().Contains(term)));
 
             adHocDtos = await adHocMessages
                 .Select(m => new CampaignRecipientDto(
@@ -325,6 +337,8 @@ public class CampaignService(
                     null,
                     m.ProspectId,
                     m.Prospect.BusinessName,
+                    m.Prospect.Contacts.Where(c => c.IsPrimary).Select(c => c.Value).FirstOrDefault()
+                        ?? m.Prospect.Contacts.Select(c => c.Value).FirstOrDefault(),
                     m.Status == MessageStatus.Failed ? CampaignRecipientStatus.Failed : CampaignRecipientStatus.Pending,
                     1,
                     m.SentAt ?? m.FailedAt ?? m.CreatedAt,
