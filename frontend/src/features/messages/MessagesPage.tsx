@@ -27,6 +27,7 @@ import {
 } from '../../api/campaigns';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { LiveRefreshLabel } from '../../components/LiveRefreshLabel';
+import { BulkSendMessageDialog } from '../prospects/BulkSendMessageDialog';
 
 function formatCost(cost: number | null, currency: string | null): string {
   if (cost === null) return `0 ${currency ?? 'ARS'}`;
@@ -631,6 +632,7 @@ function DailyProspectsTab() {
   const [sentFilter, setSentFilter] = useState<'' | 'true' | 'false'>('');
   const [page, setPage] = useState(1);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [sendTargetIds, setSendTargetIds] = useState<number[] | null>(null);
 
   const query = useQuery({
     queryKey: ['daily-prospects', { province, city, sentFilter, page }],
@@ -767,16 +769,25 @@ function DailyProspectsTab() {
           {selectedIds.size > 0 && (
             <div className="flex items-center justify-between rounded-md border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-500/10 px-4 py-2 text-sm">
               <span className="text-indigo-700 dark:text-indigo-300">{selectedIds.size} seleccionado(s)</span>
-              {selectedRetryableCount > 0 && (
+              <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  onClick={() => retryMutation.mutate(selectedProspects)}
-                  disabled={retryMutation.isPending}
-                  className="rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-500 disabled:opacity-60"
+                  onClick={() => setSendTargetIds([...selectedIds])}
+                  className="rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-500"
                 >
-                  {retryMutation.isPending ? 'Reintentando…' : `Reintentar seleccionados (${selectedRetryableCount})`}
+                  Enviar mensaje
                 </button>
-              )}
+                {selectedRetryableCount > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => retryMutation.mutate(selectedProspects)}
+                    disabled={retryMutation.isPending}
+                    className="rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-500 disabled:opacity-60"
+                  >
+                    {retryMutation.isPending ? 'Reintentando…' : `Reintentar seleccionados (${selectedRetryableCount})`}
+                  </button>
+                )}
+              </div>
             </div>
           )}
 
@@ -845,16 +856,25 @@ function DailyProspectsTab() {
                       {p.lastAttemptAt ? new Date(p.lastAttemptAt).toLocaleString('es-AR') : '—'}
                     </td>
                     <td className="px-4 py-2">
-                      {p.lastStatus === 'Failed' && p.retryTargetId !== null && (
+                      <div className="flex items-center gap-3">
                         <button
                           type="button"
-                          onClick={() => retryMutation.mutate([p])}
-                          disabled={retryMutation.isPending}
-                          className="text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:underline disabled:opacity-60"
+                          onClick={() => setSendTargetIds([p.prospectId])}
+                          className="text-xs font-medium text-emerald-600 dark:text-emerald-400 hover:underline"
                         >
-                          Reintentar
+                          Enviar mensaje
                         </button>
-                      )}
+                        {p.lastStatus === 'Failed' && p.retryTargetId !== null && (
+                          <button
+                            type="button"
+                            onClick={() => retryMutation.mutate([p])}
+                            disabled={retryMutation.isPending}
+                            className="text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:underline disabled:opacity-60"
+                          >
+                            Reintentar
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -870,6 +890,19 @@ function DailyProspectsTab() {
           </div>
           <Pager page={query.data.page} totalPages={query.data.totalPages} onChange={changePage} />
         </>
+      )}
+
+      {sendTargetIds && (
+        <BulkSendMessageDialog
+          prospectIds={sendTargetIds}
+          onClose={() => setSendTargetIds(null)}
+          onSent={() => {
+            setSelectedIds(new Set());
+            setSendTargetIds(null);
+            queryClient.invalidateQueries({ queryKey: ['daily-prospects'] });
+            queryClient.invalidateQueries({ queryKey: ['messages'] });
+          }}
+        />
       )}
     </div>
   );
