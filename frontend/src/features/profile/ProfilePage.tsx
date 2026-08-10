@@ -94,7 +94,7 @@ function ProfilePage() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-</label>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Apellido</label>
             <input type="text" value={lastName} onChange={(e) => setLastName(e.target.value)} className={inputClass} />
           </div>
 
