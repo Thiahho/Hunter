@@ -133,8 +133,13 @@ public class ScheduledProspectAutomationService(
                 return;
             }
 
+            // Status == Imported (no solo "ProspectId != null"): los registros Duplicate también
+            // tienen ProspectId seteado (apunta al prospecto ya existente, ver
+            // ImportService.BuildRecordAsync), pero esos no pasaron por ConfirmAsync y no deben
+            // sumarse a la campaña — si no se filtra por Status, un negocio ya cargado en una
+            // corrida anterior se re-agrega como destinatario nuevo y recibe el mensaje de nuevo.
             var newProspectIds = await db.ImportBatchRecords
-                .Where(r => r.ImportBatchId == batchId && r.ProspectId != null)
+                .Where(r => r.ImportBatchId == batchId && r.Status == ImportBatchRecordStatus.Imported && r.ProspectId != null)
                 .Select(r => r.ProspectId!.Value)
                 .ToListAsync(ct);
 
