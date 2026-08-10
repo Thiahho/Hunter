@@ -64,10 +64,10 @@ public class MessageQueryService(IHunterDbContext db) : IMessageQueryService
             Phone = p.Contacts.Where(c => c.IsPrimary).Select(c => c.Value).FirstOrDefault()
                 ?? p.Contacts.Select(c => c.Value).FirstOrDefault(),
             Attempts = db.Messages.Count(m => m.ProspectId == p.Id),
-            LastAttemptAt = db.Messages.Where(m => m.ProspectId == p.Id)
-                .OrderByDescending(m => m.CreatedAt).Select(m => (DateTimeOffset?)m.CreatedAt).FirstOrDefault(),
-            LastStatus = db.Messages.Where(m => m.ProspectId == p.Id)
-                .OrderByDescending(m => m.CreatedAt).Select(m => (MessageStatus?)m.Status).FirstOrDefault(),
+            LastMessage = db.Messages.Where(m => m.ProspectId == p.Id)
+                .OrderByDescending(m => m.CreatedAt)
+                .Select(m => new { m.Id, m.Status, m.CreatedAt, m.CampaignId, m.CampaignRecipientId })
+                .FirstOrDefault(),
             Sent = db.Messages.Any(m => m.ProspectId == p.Id
                 && (m.Status == MessageStatus.Sent || m.Status == MessageStatus.Delivered || m.Status == MessageStatus.Read))
         });
@@ -82,7 +82,19 @@ public class MessageQueryService(IHunterDbContext db) : IMessageQueryService
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .Select(x => new DailyProspectDto(
-                x.Id, x.BusinessName, x.Province, x.City, x.Phone, x.CreatedAt, x.Sent, x.Attempts, x.LastAttemptAt, x.LastStatus))
+                x.Id,
+                x.BusinessName,
+                x.Province,
+                x.City,
+                x.Phone,
+                x.CreatedAt,
+                x.Sent,
+                x.Attempts,
+                x.LastMessage != null ? x.LastMessage.CreatedAt : (DateTimeOffset?)null,
+                x.LastMessage != null ? x.LastMessage.Status : (MessageStatus?)null,
+                x.LastMessage != null ? (x.LastMessage.CampaignRecipientId ?? x.LastMessage.Id) : (int?)null,
+                x.LastMessage != null && x.LastMessage.CampaignRecipientId != null,
+                x.LastMessage != null ? x.LastMessage.CampaignId : (int?)null))
             .ToListAsync(ct);
 
         return new PagedResult<DailyProspectDto> { Items = items, Page = page, PageSize = pageSize, TotalItems = totalItems };

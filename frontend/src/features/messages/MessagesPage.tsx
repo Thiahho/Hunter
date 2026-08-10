@@ -11,6 +11,7 @@ import {
   searchDailyProspects,
   searchMessageResponses,
   searchMessages,
+  type DailyProspectDto,
   type IntentClassification,
   type MessageDto,
   type MessageResponseDto,
@@ -340,9 +341,11 @@ type PendingRecipientDeletion =
   | { kind: 'single'; recipient: CampaignRecipientDto }
   | { kind: 'bulk'; recipients: CampaignRecipientDto[] };
 
+type RetryTarget = { id: number; campaignId: number | null; isCampaignRecipient: boolean };
+
 // Reintentar un CampaignRecipient real reprocesa la cola de su Campaña; reintentar un envío
 // individual (isCampaignRecipient=false) reenvía ese Message puntual vía TestMessageService.
-async function retryOne(r: CampaignRecipientDto): Promise<void> {
+async function retryOne(r: RetryTarget): Promise<void> {
   if (r.isCampaignRecipient) {
     await retryRecipients([r.id]);
     if (r.campaignId !== null) {
@@ -622,10 +625,12 @@ const dailyInputClass =
   'rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-1.5 text-sm text-slate-900 dark:text-slate-100 placeholder:text-slate-400';
 
 function DailyProspectsTab() {
+  const queryClient = useQueryClient();
   const [province, setProvince] = useState('');
   const [city, setCity] = useState('');
   const [sentFilter, setSentFilter] = useState<'' | 'true' | 'false'>('');
   const [page, setPage] = useState(1);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
 
   const query = useQuery({
     queryKey: ['daily-prospects', { province, city, sentFilter, page }],
@@ -645,9 +650,46 @@ function DailyProspectsTab() {
     mutationFn: () => exportFailedContacts({ province: province.trim() || undefined, city: city.trim() || undefined }),
   });
 
+  const retryMutation = useMutation({
+    mutationFn: async (targets: DailyProspectDto[]) => {
+      for (const target of targets.filter((p) => p.lastStatus === 'Failed' && p.retryTargetId !== null)) {
+        await retryOne({ id: target.retryTargetId!, campaignId: target.campaignId, isCampaignRecipient: target.isCampaignRecipient });
+      }
+    },
+    onSuccess: () => {
+      setSelectedIds(new Set());
+      queryClient.invalidateQueries({ queryKey: ['daily-prospects'] });
+      queryClient.invalidateQueries({ queryKey: ['messages'] });
+      queryClient.invalidateQueries({ queryKey: ['campaign-recipients'] });
+    },
+  });
+
   function changePage(next: number) {
     setPage(next);
+    setSelectedIds(new Set());
   }
+
+  function toggleSelected(id: number) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleSelectAllOnPage() {
+    if (!query.data) return;
+    setSelectedIds((prev) => {
+      const allSelected = query.data.items.length > 0 && query.data.items.every((p) => prev.has(p.prospectId));
+      return allSelected ? new Set() : new Set(query.data.items.map((p) => p.prospectId));
+    });
+  }
+
+  const allOnPageSelected =
+    !!query.data && query.data.items.length > 0 && query.data.items.every((p) => selectedIds.has(p.prospectId));
+  const selectedProspects = query.data?.items.filter((p) => selectedIds.has(p.prospectId)) ?? [];
+  const selectedRetryableCount = selectedProspects.filter((p) => p.lastStatus === 'Failed' && p.retryTargetId !== null).length;
 
   return (
     <div className="space-y-3">
@@ -714,24 +756,64 @@ function DailyProspectsTab() {
           {exportMutation.error instanceof Error ? exportMutation.error.message : 'No se pudo exportar la lista.'}
         </p>
       )}
+      {retryMutation.isError && (
+        <p className="text-sm text-red-600 dark:text-red-400">
+          {retryMutation.error instanceof Error ? retryMutation.error.message : 'No se pudo reintentar el envío.'}
+        </p>
+      )}
 
       {query.data && (
         <>
+          {selectedIds.size > 0 && (
+            <div className="flex items-center justify-between rounded-md border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-500/10 px-4 py-2 text-sm">
+              <span className="text-indigo-700 dark:text-indigo-300">{selectedIds.size} seleccionado(s)</span>
+              {selectedRetryableCount > 0 && (
+                <button
+                  type="button"
+                  onClick={() => retryMutation.mutate(selectedProspects)}
+                  disabled={retryMutation.isPending}
+                  className="rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-500 disabled:opacity-60"
+                >
+                  {retryMutation.isPending ? 'Reintentando…' : `Reintentar seleccionados (${selectedRetryableCount})`}
+                </button>
+              )}
+            </div>
+          )}
+
           <div className="overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-800">
             <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-800 text-sm">
               <thead className="bg-slate-50 dark:bg-slate-900">
                 <tr>
+                  <th className="px-4 py-2 text-left">
+                    <input
+                      type="checkbox"
+                      checked={allOnPageSelected}
+                      onChange={toggleSelectAllOnPage}
+                      aria-label="Seleccionar todos los de esta página"
+                      className="rounded border-slate-300 dark:border-slate-700"
+                    />
+                  </th>
                   <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">Prospecto</th>
                   <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">Provincia</th>
                   <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">Localidad</th>
                   <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">Enviado</th>
                   <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">Intentos</th>
                   <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">Último intento</th>
+                  <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">Acciones</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800 bg-white dark:bg-slate-950">
                 {query.data.items.map((p) => (
                   <tr key={p.prospectId} className="hover:bg-slate-50 dark:hover:bg-slate-900">
+                    <td className="px-4 py-2">
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.has(p.prospectId)}
+                        onChange={() => toggleSelected(p.prospectId)}
+                        aria-label={`Seleccionar prospecto ${p.businessName}`}
+                        className="rounded border-slate-300 dark:border-slate-700"
+                      />
+                    </td>
                     <td className="px-4 py-2">
                       <Link
                         to={`/app/prospects/${p.prospectId}`}
@@ -762,11 +844,23 @@ function DailyProspectsTab() {
                     <td className="px-4 py-2 text-slate-600 dark:text-slate-300">
                       {p.lastAttemptAt ? new Date(p.lastAttemptAt).toLocaleString('es-AR') : '—'}
                     </td>
+                    <td className="px-4 py-2">
+                      {p.lastStatus === 'Failed' && p.retryTargetId !== null && (
+                        <button
+                          type="button"
+                          onClick={() => retryMutation.mutate([p])}
+                          disabled={retryMutation.isPending}
+                          className="text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:underline disabled:opacity-60"
+                        >
+                          Reintentar
+                        </button>
+                      )}
+                    </td>
                   </tr>
                 ))}
                 {query.data.items.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="px-4 py-6 text-center text-slate-400">
+                    <td colSpan={8} className="px-4 py-6 text-center text-slate-400">
                       Sin prospectos nuevos hoy con estos filtros.
                     </td>
                   </tr>

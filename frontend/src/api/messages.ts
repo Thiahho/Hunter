@@ -65,6 +65,9 @@ export interface DailyProspectDto {
   attempts: number;
   lastAttemptAt: string | null;
   lastStatus: MessageStatus | null;
+  retryTargetId: number | null;
+  isCampaignRecipient: boolean;
+  campaignId: number | null;
 }
 
 export interface DailyProspectQuery {
