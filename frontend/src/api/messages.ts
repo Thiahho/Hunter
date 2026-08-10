@@ -54,6 +54,34 @@ export interface MessageResponseQuery {
   pageSize?: number;
 }
 
+export interface DailyProspectDto {
+  prospectId: number;
+  businessName: string;
+  province: string | null;
+  city: string | null;
+  phone: string | null;
+  createdAt: string;
+  sent: boolean;
+  attempts: number;
+  lastAttemptAt: string | null;
+  lastStatus: MessageStatus | null;
+}
+
+export interface DailyProspectQuery {
+  date?: string;
+  province?: string;
+  city?: string;
+  sent?: boolean;
+  page?: number;
+  pageSize?: number;
+}
+
+export interface FailedContactsQuery {
+  date?: string;
+  province?: string;
+  city?: string;
+}
+
 export async function searchMessages(query: MessageQuery): Promise<PagedResult<MessageDto>> {
   const response = await apiClient.get<ApiResponse<PagedResult<MessageDto>>>('/messages', { params: query });
   if (!response.data.success || !response.data.data) {
@@ -68,6 +96,26 @@ export async function searchMessageResponses(query: MessageResponseQuery): Promi
     throw new Error(response.data.message ?? 'No se pudieron obtener las respuestas.');
   }
   return response.data.data;
+}
+
+export async function searchDailyProspects(query: DailyProspectQuery): Promise<PagedResult<DailyProspectDto>> {
+  const response = await apiClient.get<ApiResponse<PagedResult<DailyProspectDto>>>('/messages/daily', { params: query });
+  if (!response.data.success || !response.data.data) {
+    throw new Error(response.data.message ?? 'No se pudieron obtener los prospectos del día.');
+  }
+  return response.data.data;
+}
+
+export async function exportFailedContacts(query: FailedContactsQuery): Promise<void> {
+  const response = await apiClient.get('/messages/export/failed', { params: query, responseType: 'blob' });
+  const url = URL.createObjectURL(response.data as Blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `no-contactados-${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
 }
 
 export interface TestMessageResultDto {

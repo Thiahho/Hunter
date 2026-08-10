@@ -6,7 +6,9 @@ import {
   bulkDeleteMessages,
   deleteMessage,
   deleteMessageResponse,
+  exportFailedContacts,
   retryMessage,
+  searchDailyProspects,
   searchMessageResponses,
   searchMessages,
   type IntentClassification,
@@ -616,6 +618,169 @@ function NotSentTab() {
   );
 }
 
+const dailyInputClass =
+  'rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-1.5 text-sm text-slate-900 dark:text-slate-100 placeholder:text-slate-400';
+
+function DailyProspectsTab() {
+  const [province, setProvince] = useState('');
+  const [city, setCity] = useState('');
+  const [sentFilter, setSentFilter] = useState<'' | 'true' | 'false'>('');
+  const [page, setPage] = useState(1);
+
+  const query = useQuery({
+    queryKey: ['daily-prospects', { province, city, sentFilter, page }],
+    queryFn: () =>
+      searchDailyProspects({
+        province: province.trim() || undefined,
+        city: city.trim() || undefined,
+        sent: sentFilter === '' ? undefined : sentFilter === 'true',
+        page,
+        pageSize: PAGE_SIZE,
+      }),
+    placeholderData: (previous) => previous,
+    refetchInterval: 15000,
+  });
+
+  const exportMutation = useMutation({
+    mutationFn: () => exportFailedContacts({ province: province.trim() || undefined, city: city.trim() || undefined }),
+  });
+
+  function changePage(next: number) {
+    setPage(next);
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <input
+          type="text"
+          value={province}
+          onChange={(e) => {
+            setProvince(e.target.value);
+            changePage(1);
+          }}
+          placeholder="Provincia"
+          className={dailyInputClass}
+        />
+        <input
+          type="text"
+          value={city}
+          onChange={(e) => {
+            setCity(e.target.value);
+            changePage(1);
+          }}
+          placeholder="Localidad"
+          className={dailyInputClass}
+        />
+        <select
+          value={sentFilter}
+          onChange={(e) => {
+            setSentFilter(e.target.value as '' | 'true' | 'false');
+            changePage(1);
+          }}
+          className={selectClass}
+        >
+          <option value="">Todos</option>
+          <option value="true">Ya se envió</option>
+          <option value="false">Todavía no</option>
+        </select>
+        <button
+          type="button"
+          onClick={() => query.refetch()}
+          disabled={query.isFetching}
+          className="rounded-md border border-slate-300 dark:border-slate-700 px-3 py-1.5 text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-60"
+        >
+          {query.isFetching ? 'Actualizando…' : 'Actualizar'}
+        </button>
+        <button
+          type="button"
+          onClick={() => exportMutation.mutate()}
+          disabled={exportMutation.isPending}
+          className="ml-auto rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-500 disabled:opacity-60"
+        >
+          {exportMutation.isPending ? 'Exportando…' : 'Exportar no contactados'}
+        </button>
+        <LiveRefreshLabel intervalSeconds={15} lastUpdatedAt={query.dataUpdatedAt} />
+      </div>
+
+      {query.isLoading && <p className="text-sm text-slate-500 dark:text-slate-400">Cargando...</p>}
+      {query.isError && (
+        <p className="text-sm text-red-600 dark:text-red-400">
+          {query.error instanceof Error ? query.error.message : 'No se pudieron cargar los prospectos del día.'}
+        </p>
+      )}
+      {exportMutation.isError && (
+        <p className="text-sm text-red-600 dark:text-red-400">
+          {exportMutation.error instanceof Error ? exportMutation.error.message : 'No se pudo exportar la lista.'}
+        </p>
+      )}
+
+      {query.data && (
+        <>
+          <div className="overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-800">
+            <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-800 text-sm">
+              <thead className="bg-slate-50 dark:bg-slate-900">
+                <tr>
+                  <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">Prospecto</th>
+                  <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">Provincia</th>
+                  <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">Localidad</th>
+                  <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">Enviado</th>
+                  <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">Intentos</th>
+                  <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">Último intento</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800 bg-white dark:bg-slate-950">
+                {query.data.items.map((p) => (
+                  <tr key={p.prospectId} className="hover:bg-slate-50 dark:hover:bg-slate-900">
+                    <td className="px-4 py-2">
+                      <Link
+                        to={`/app/prospects/${p.prospectId}`}
+                        className="font-medium text-indigo-600 dark:text-indigo-400 hover:underline"
+                      >
+                        {p.businessName}
+                      </Link>
+                    </td>
+                    <td className="px-4 py-2 text-slate-600 dark:text-slate-300">{p.province ?? '—'}</td>
+                    <td className="px-4 py-2 text-slate-600 dark:text-slate-300">{p.city ?? '—'}</td>
+                    <td className="px-4 py-2">
+                      {p.sent ? (
+                        <span className="rounded-full bg-emerald-50 dark:bg-emerald-500/10 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:text-emerald-300">
+                          Enviado
+                        </span>
+                      ) : (
+                        <span className="rounded-full bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-xs font-medium text-slate-600 dark:text-slate-300">
+                          Pendiente
+                        </span>
+                      )}
+                      {p.lastStatus === 'Failed' && (
+                        <span className="ml-1 rounded-full bg-red-50 dark:bg-red-500/10 px-2 py-0.5 text-xs font-medium text-red-600 dark:text-red-400">
+                          Falló
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-4 py-2 text-slate-600 dark:text-slate-300">{p.attempts}</td>
+                    <td className="px-4 py-2 text-slate-600 dark:text-slate-300">
+                      {p.lastAttemptAt ? new Date(p.lastAttemptAt).toLocaleString('es-AR') : '—'}
+                    </td>
+                  </tr>
+                ))}
+                {query.data.items.length === 0 && (
+                  <tr>
+                    <td colSpan={6} className="px-4 py-6 text-center text-slate-400">
+                      Sin prospectos nuevos hoy con estos filtros.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+          <Pager page={query.data.page} totalPages={query.data.totalPages} onChange={changePage} />
+        </>
+      )}
+    </div>
+  );
+}
+
 type PendingResponseDeletion =
   | { kind: 'single'; response: MessageResponseDto }
   | { kind: 'bulk'; responses: MessageResponseDto[] };
@@ -827,7 +992,7 @@ function ResponsesTab() {
 }
 
 export function MessagesPage() {
-  const [tab, setTab] = useState<'sent' | 'responses' | 'not-sent'>('sent');
+  const [tab, setTab] = useState<'sent' | 'responses' | 'not-sent' | 'daily'>('sent');
 
   const tabClass = (active: boolean) =>
     `rounded-md px-3 py-1.5 text-sm font-medium ${
@@ -842,8 +1007,8 @@ export function MessagesPage() {
         <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Mensajes</h2>
         <p className="text-sm text-slate-500 dark:text-slate-400">
           A quién se le envió cada mensaje y su estado, quiénes todavía no recibieron el suyo (con opción de
-          reintentar), y las respuestas recibidas (texto libre o botón "Estoy interesado") con la clasificación que
-          les asignó el sistema.
+          reintentar), las respuestas recibidas (texto libre o botón "Estoy interesado") con la clasificación que
+          les asignó el sistema, y los prospectos que se sumaron hoy con su estado de contacto.
         </p>
       </div>
 
@@ -857,11 +1022,15 @@ export function MessagesPage() {
         <button className={tabClass(tab === 'responses')} onClick={() => setTab('responses')}>
           Respuestas
         </button>
+        <button className={tabClass(tab === 'daily')} onClick={() => setTab('daily')}>
+          Del día
+        </button>
       </div>
 
       {tab === 'sent' && <SentMessagesTab />}
       {tab === 'not-sent' && <NotSentTab />}
       {tab === 'responses' && <ResponsesTab />}
+      {tab === 'daily' && <DailyProspectsTab />}
     </div>
   );
 }
