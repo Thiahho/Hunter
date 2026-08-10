@@ -69,7 +69,7 @@ public class LeadHandoffMessageBuilderTests
 
         Assert.Contains("💬 Sugerencia de respuesta:", text);
         Assert.Contains("Hola Marcelo!", text);
-        Assert.Contains("Mi nombre es Juan", text);
+        Assert.Contains("Difrani", text);
     }
 
     [Fact]
@@ -96,8 +96,42 @@ public class LeadHandoffMessageBuilderTests
 
         // wa.me/<numero>?text=<sugerencia url-encoded>, para que un clic abra el chat correcto
         // con la respuesta ya cargada en el textbox, lista para revisar y mandar.
-        var expectedText = Uri.EscapeDataString("Hola Repuestos Oeste! ¿Cómo estás? Mi nombre es Juan, un gusto saludarte.");
+        var expectedText = Uri.EscapeDataString(
+            "Hola Repuestos Oeste! ¿Cómo estás? Soy de Difrani, fábrica de mazas de rueda, rótulas, extremos y bieletas.");
         Assert.Contains($"📱 https://wa.me/5491112345678?text={expectedText}", text);
+    }
+
+    [Fact]
+    public void BuildFreeText_AlwaysIncludesDispatchLink_WithCustomerDataAsList()
+    {
+        var prospect = FullProspect();
+        prospect.Address = "Av. Rivadavia 1234";
+
+        var text = LeadHandoffMessageBuilder.BuildFreeText(prospect, "hola", "5491112345678");
+
+        Assert.Contains("📋 Derivar: https://wa.me/5491132948959?text=", text);
+
+        var expectedListText = Uri.EscapeDataString(
+            "Nombre: Repuestos Oeste\nUbicación: Moreno\nDirección: Av. Rivadavia 1234\nNúmero: 5491112345678\nRubro: Casa de repuestos\nMaps: " +
+            Uri.EscapeDataString("https://www.google.com/maps/search/?api=1&query=Repuestos Oeste Av. Rivadavia 1234 Moreno"));
+
+        // El "Maps:" queda doblemente encodeado dentro del texto de la lista (el link interno ya
+        // trae su propio query encodeado, y todo el bloque se vuelve a encodear para el ?text=).
+        Assert.Contains(Uri.EscapeDataString("Nombre: Repuestos Oeste"), text);
+        Assert.Contains(Uri.EscapeDataString("Dirección: Av. Rivadavia 1234"), text);
+        Assert.Contains(Uri.EscapeDataString("Número: 5491112345678"), text);
+        Assert.Contains(Uri.EscapeDataString("Rubro: Casa de repuestos"), text);
+        Assert.Contains(Uri.EscapeDataString("maps.google.com").ToLowerInvariant(), text.ToLowerInvariant());
+    }
+
+    [Fact]
+    public void BuildFreeText_MissingAddress_DispatchLinkUsesPlaceholder()
+    {
+        var prospect = new Prospect { BusinessName = "Taller Juan", City = "Moreno", Category = ProspectCategory.Workshop };
+
+        var text = LeadHandoffMessageBuilder.BuildFreeText(prospect, "hola", "5491112345678");
+
+        Assert.Contains(Uri.EscapeDataString("Dirección: -"), text);
     }
 
     [Fact]

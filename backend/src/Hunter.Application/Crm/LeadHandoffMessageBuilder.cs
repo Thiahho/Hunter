@@ -26,6 +26,10 @@ public static class LeadHandoffMessageBuilder
         [ProspectCategory.Other] = "Otro"
     };
 
+    // Número fijo al que se deriva el prospecto para seguimiento centralizado, con los datos
+    // del cliente pre-cargados en formato lista (ver BuildDispatchLink).
+    private const string DispatchWhatsAppNumber = "5491132948959";
+
     // prospectWhatsApp: el vendedor lo necesita para poder responderle directo sin ir a buscarlo
     // al CRM. assigneeFirstName es opcional (nombre del usuario logueado que recibe el handoff):
     // si viene, se agrega una sugerencia de respuesta lista para copiar y pegar; si no, se omite
@@ -51,8 +55,9 @@ public static class LeadHandoffMessageBuilder
         // textbox del chat (parámetro ?text=): un clic abre WhatsApp con el prospecto correcto
         // y el mensaje listo para revisar y mandar. Sin sugerencia (no hay assigneeFirstName),
         // el link igual sirve para abrir el chat, solo que sin nada pre-cargado.
-        var suggestedReply = string.IsNullOrWhiteSpace(assigneeFirstName) ? null : BuildSuggestedReply(prospect, assigneeFirstName);
+        var suggestedReply = string.IsNullOrWhiteSpace(assigneeFirstName) ? null : BuildSuggestedReply(prospect);
         sb.AppendLine($"📱 {BuildWhatsAppLink(prospectWhatsApp, suggestedReply)}");
+        sb.AppendLine($"📋 Derivar: {BuildDispatchLink(prospect, prospectWhatsApp)}");
 
         sb.AppendLine();
         sb.AppendLine(isBotEscalation ? "El bot del negocio no lo dejó pasar. Última respuesta (automática):" : "Mensaje:");
@@ -73,24 +78,51 @@ public static class LeadHandoffMessageBuilder
     // sin depender de que Telegram detecte el link suelto como clickeable.
     public static TelegramButton BuildWhatsAppButton(Prospect prospect, string prospectWhatsApp, string? assigneeFirstName = null)
     {
-        var suggestedReply = string.IsNullOrWhiteSpace(assigneeFirstName) ? null : BuildSuggestedReply(prospect, assigneeFirstName);
+        var suggestedReply = string.IsNullOrWhiteSpace(assigneeFirstName) ? null : BuildSuggestedReply(prospect);
         var contactName = string.IsNullOrWhiteSpace(prospect.ContactName) ? prospect.BusinessName : prospect.ContactName;
         return new TelegramButton($"💬 Escribirle a {contactName}", BuildWhatsAppLink(prospectWhatsApp, suggestedReply));
     }
 
-    private static string BuildSuggestedReply(Prospect prospect, string assigneeFirstName)
+    private static string BuildSuggestedReply(Prospect prospect)
     {
         var greetingName = string.IsNullOrWhiteSpace(prospect.ContactName) ? prospect.BusinessName : prospect.ContactName;
-        return $"Hola {greetingName}! ¿Cómo estás? Mi nombre es {assigneeFirstName}, un gusto saludarte.";
+        return $"Hola {greetingName}! ¿Cómo estás? Mi nombre es Thiago, un gusto saludarte. Soy de Difrani, fábrica de mazas de rueda, rótulas, extremos y bieletas.";
     }
 
     // https://wa.me/<número sin "+" ni espacios>?text=<mensaje pre-cargado, url-encoded>. Meta
     // no exige "+", el normalizador de contactos ya deja solo dígitos, así que alcanza con
     // interpolar directo.
-    private static string BuildWhatsAppLink(string phone, string? prefilledText) =>
+    private static string BuildWhatsAppLink(string phone, string? prefilledText = null) =>
         prefilledText is null
             ? $"https://wa.me/{phone}"
             : $"https://wa.me/{phone}?text={Uri.EscapeDataString(prefilledText)}";
+
+    // Link de derivación a un número fijo (seguimiento centralizado) con los datos del cliente
+    // pre-cargados en formato lista, para no tener que ir al CRM a copiarlos a mano.
+    private static string BuildDispatchLink(Prospect prospect, string prospectWhatsApp)
+    {
+        var lines = new[]
+        {
+            $"Nombre: {prospect.BusinessName}",
+            $"Ubicación: {prospect.City ?? "-"}",
+            $"Dirección: {prospect.Address ?? "-"}",
+            $"Número: {prospectWhatsApp}",
+            $"Rubro: {DisplayName(prospect.Category)}",
+            $"Maps: {BuildMapsLink(prospect)}"
+        };
+
+        return BuildWhatsAppLink(DispatchWhatsAppNumber, string.Join("\n", lines));
+    }
+
+    // Sin lat/long confiable en todos los prospectos, se arma como búsqueda por nombre +
+    // dirección en vez de depender de coordenadas.
+    private static string BuildMapsLink(Prospect prospect)
+    {
+        var query = string.Join(" ", new[] { prospect.BusinessName, prospect.Address, prospect.City }
+            .Where(part => !string.IsNullOrWhiteSpace(part)));
+
+        return $"https://www.google.com/maps/search/?api=1&query={Uri.EscapeDataString(query)}";
+    }
 
     // Parámetros para la plantilla nuevo_lead (5 params: empresa, ciudad, rubro, score, mensaje).
     public static IReadOnlyList<string> BuildTemplateParameters(Prospect prospect, string prospectMessage) =>

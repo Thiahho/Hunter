@@ -1,7 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useParams } from 'react-router';
-import { useAuthStore } from '../../store/authStore';
 import { LiveRefreshLabel } from '../../components/LiveRefreshLabel';
 import {
   addProspectContact,
@@ -335,9 +334,9 @@ function buildWhatsAppLink(phone: string, prefilledText?: string): string {
 // Mismo saludo sugerido que arma el backend para el aviso de Telegram (LeadHandoffMessageBuilder.
 // BuildSuggestedReply), para que el botón de acá y el de Telegram lleven el mismo mensaje
 // pre-cargado al abrir el chat.
-function buildSuggestedGreeting(contactName: string | null, businessName: string, assigneeFirstName: string): string {
+function buildSuggestedGreeting(contactName: string | null, businessName: string): string {
   const greetingName = contactName?.trim() ? contactName : businessName;
-  return `Hola ${greetingName}! ¿Cómo estás? Mi nombre es ${assigneeFirstName}, un gusto saludarte.`;
+  return `Hola ${greetingName}! ¿Cómo estás?. Soy de Difrani, fábrica de mazas de rueda, rótulas, extremos y bieletas.`;
 }
 
 const contactInputClass =
@@ -783,8 +782,6 @@ export function ProspectDetailPage() {
   const [lastResult, setLastResult] = useState<TestMessageResult | null>(null);
   const [isEditing, setIsEditing] = useState(false);
 
-  const currentUser = useAuthStore((state) => state.user);
-
   const { data, isLoading, isError, error } = useQuery({
     queryKey: ['prospects', prospectId],
     queryFn: () => fetchProspectById(prospectId),
@@ -967,9 +964,7 @@ export function ProspectDetailPage() {
             const whatsappContact = data.contacts.find((c) => c.channel === 'Whatsapp');
             if (!whatsappContact) return null;
 
-            const greeting = currentUser
-              ? buildSuggestedGreeting(data.contactName, data.businessName, currentUser.firstName)
-              : undefined;
+            const greeting = buildSuggestedGreeting(data.contactName, data.businessName);
 
             return (
               <a

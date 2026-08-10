@@ -43,12 +43,12 @@
   },
   "OpenStreetMap": {
     "Endpoint": "https://overpass-api.de/api/interpreter",
-    "UserAgent": "HunterCRM/1.0 (contact: thiagobrizuelav@gmail.com)",
+    "UserAgent": "HunterCRM/1.0 (contact: hunter@gmail.com)",
     "TimeoutSeconds": 60
   },
   "Nominatim": {
     "Endpoint": "https://nominatim.openstreetmap.org/search",
-    "UserAgent": "HunterCRM/1.0 (contact: thiagobrizuelav@gmail.com)",
+    "UserAgent": "HunterCRM/1.0 (contact: hunter@gmail.com)",
     "TimeoutSeconds": 10
   },
   "Telegram": {
