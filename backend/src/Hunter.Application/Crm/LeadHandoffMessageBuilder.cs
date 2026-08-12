@@ -35,10 +35,15 @@ public static class LeadHandoffMessageBuilder
     // si viene, se agrega una sugerencia de respuesta lista para copiar y pegar; si no, se omite
     // ese bloque entero en vez de dejar un saludo con nombre vacío.
     public static string BuildFreeText(
-        Prospect prospect, string prospectMessage, string prospectWhatsApp, string? assigneeFirstName = null, bool isBotEscalation = false)
+        Prospect prospect, string prospectMessage, string prospectWhatsApp, string? assigneeFirstName = null,
+        bool isBotEscalation = false, bool isManualAlert = false)
     {
         var sb = new StringBuilder();
-        sb.AppendLine(isBotEscalation ? "🤖 BOT DETECTADO — reintentos agotados" : "🔥 NUEVO LEAD");
+        sb.AppendLine(isBotEscalation
+            ? "🤖 BOT DETECTADO — reintentos agotados"
+            : isManualAlert
+                ? "🔔 ALERTA MANUAL"
+                : "🔥 NUEVO LEAD");
         sb.AppendLine();
         sb.AppendLine(prospect.BusinessName);
         sb.AppendLine();

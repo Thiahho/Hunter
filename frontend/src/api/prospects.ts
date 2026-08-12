@@ -236,3 +236,10 @@ export async function sendTestMessage(prospectId: number, content: string): Prom
   }
   return response.data.data;
 }
+
+export async function sendTelegramAlert(prospectId: number): Promise<void> {
+  const response = await apiClient.post<ApiResponse<boolean>>(`/prospects/${prospectId}/telegram-alert`);
+  if (!response.data.success) {
+    throw new Error(response.data.message ?? 'No se pudo enviar la alerta a Telegram.');
+  }
+}

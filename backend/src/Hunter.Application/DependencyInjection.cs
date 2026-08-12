@@ -31,6 +31,7 @@ public static class DependencyInjection
         services.AddScoped<IScheduledMessageService, ScheduledMessageService>();
         services.AddScoped<IMessageStatusService, MessageStatusService>();
         services.AddScoped<ILeadService, LeadService>();
+        services.AddScoped<IManualTelegramAlertService, ManualTelegramAlertService>();
         services.AddScoped<ISaleQueryService, SaleQueryService>();
         services.AddScoped<ICostService, CostService>();
         services.AddScoped<IMetricsService, MetricsService>();

@@ -6,6 +6,7 @@ import {
   addProspectContact,
   fetchProspectById,
   removeProspectContact,
+  sendTelegramAlert,
   sendTestMessage,
   updateProspect,
   updateProspectContact,
@@ -798,6 +799,10 @@ export function ProspectDetailPage() {
     },
   });
 
+  const telegramAlertMutation = useMutation({
+    mutationFn: () => sendTelegramAlert(prospectId),
+  });
+
   if (isLoading) {
     return <p className="text-sm text-slate-500 dark:text-slate-400">Cargando prospecto...</p>;
   }
@@ -960,25 +965,50 @@ export function ProspectDetailPage() {
       <details className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4" open>
         <summary className="flex cursor-pointer items-center justify-between text-sm font-medium text-slate-500 dark:text-slate-400">
           <span>Conversación</span>
-          {(() => {
-            const whatsappContact = data.contacts.find((c) => c.channel === 'Whatsapp');
-            if (!whatsappContact) return null;
+          <div className="flex items-center gap-2">
+            {(() => {
+              const whatsappContact = data.contacts.find((c) => c.channel === 'Whatsapp');
+              if (!whatsappContact) return null;
 
-            const greeting = buildSuggestedGreeting(data.contactName, data.businessName);
+              const greeting = buildSuggestedGreeting(data.contactName, data.businessName);
 
-            return (
-              <a
-                href={buildWhatsAppLink(whatsappContact.value, greeting)}
-                target="_blank"
-                rel="noreferrer"
-                onClick={(e) => e.stopPropagation()}
-                className="rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-700"
-              >
-                💬 Escribirle a {data.contactName || data.businessName}
-              </a>
-            );
-          })()}
+              return (
+                <a
+                  href={buildWhatsAppLink(whatsappContact.value, greeting)}
+                  target="_blank"
+                  rel="noreferrer"
+                  onClick={(e) => e.stopPropagation()}
+                  className="rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-700"
+                >
+                  💬 Escribirle a {data.contactName || data.businessName}
+                </a>
+              );
+            })()}
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                telegramAlertMutation.reset();
+                telegramAlertMutation.mutate();
+              }}
+              disabled={telegramAlertMutation.isPending}
+              title="Reenviar el detalle de este prospecto a tu Telegram, por si la alerta automática no llegó"
+              className="rounded-md bg-sky-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-sky-700 disabled:opacity-60"
+            >
+              {telegramAlertMutation.isPending ? '🔔 Enviando…' : '🔔 Enviar alerta a Telegram'}
+            </button>
+          </div>
         </summary>
+        {telegramAlertMutation.isSuccess && (
+          <p className="mt-2 text-xs text-emerald-600 dark:text-emerald-400">Alerta enviada a tu Telegram.</p>
+        )}
+        {telegramAlertMutation.isError && (
+          <p className="mt-2 text-xs text-red-600 dark:text-red-400">
+            {telegramAlertMutation.error instanceof Error
+              ? telegramAlertMutation.error.message
+              : 'No se pudo enviar la alerta a Telegram.'}
+          </p>
+        )}
         <div className="mt-3 max-h-96 overflow-y-auto pr-1">
           <ConversationSection prospectId={data.id} />
         </div>

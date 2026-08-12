@@ -1,5 +1,6 @@
 using Hunter.Application.Campaigning;
 using Hunter.Application.Campaigning.Contracts;
+using Hunter.Application.Crm;
 using Hunter.Application.Prospecting;
 using Hunter.Application.Prospecting.Contracts;
 using Hunter.Domain.Prospecting;
@@ -15,7 +16,8 @@ namespace Hunter.Api.Controllers;
 public class ProspectsController(
     IProspectService prospectService,
     ITestMessageService testMessageService,
-    IScheduledMessageService scheduledMessageService) : ControllerBase
+    IScheduledMessageService scheduledMessageService,
+    IManualTelegramAlertService manualTelegramAlertService) : ControllerBase
 {
     [HttpGet]
     public async Task<IActionResult> Search(
@@ -84,6 +86,16 @@ public class ProspectsController(
             return BadRequest(ApiResponse<TestMessageResultDto>.Fail(result.Error!));
 
         return Ok(ApiResponse<TestMessageResultDto>.Ok(result.Value!));
+    }
+
+    [HttpPost("{id:int}/telegram-alert")]
+    public async Task<IActionResult> SendTelegramAlert(int id, CancellationToken ct)
+    {
+        var result = await manualTelegramAlertService.SendAsync(id, ct);
+        if (!result.Succeeded)
+            return BadRequest(ApiResponse<bool>.Fail(result.Error!));
+
+        return Ok(ApiResponse<bool>.Ok(true));
     }
 
     [HttpGet("{id:int}/scheduled-messages")]
