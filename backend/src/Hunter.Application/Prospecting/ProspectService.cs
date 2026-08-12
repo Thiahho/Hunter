@@ -100,6 +100,15 @@ public class ProspectService(IHunterDbContext db, ICurrentUserService currentUse
 
     public async Task<Result<ProspectDto>> GetByIdAsync(int id, CancellationToken ct = default)
     {
+        // Abrir la ficha cuenta como "revisado": permite que el listado distinga los
+        // prospectos con mensajes nuevos que nadie miró todavía de los que ya se chequearon.
+        var prospect = await db.Prospects.FirstOrDefaultAsync(p => p.Id == id && !p.IsDeleted, ct);
+        if (prospect is null)
+            return Result<ProspectDto>.Failure("Prospecto no encontrado.");
+
+        prospect.LastViewedAt = DateTimeOffset.UtcNow;
+        await db.SaveChangesAsync(ct);
+
         var dto = await LoadDtoAsync(id, ct);
         return dto is null
             ? Result<ProspectDto>.Failure("Prospecto no encontrado.")
@@ -146,6 +155,13 @@ public class ProspectService(IHunterDbContext db, ICurrentUserService currentUse
         if (query.Source is not null)
             prospects = prospects.Where(p => p.Sources.Any(s => s.SourceType == query.Source));
 
+        if (query.CreatedWithinDays is { } createdWithinDays && createdWithinDays > 0)
+        {
+            var todayStart = new DateTimeOffset(DateOnly.FromDateTime(DateTimeOffset.Now.Date).ToDateTime(TimeOnly.MinValue));
+            var rangeStart = todayStart.AddDays(-(createdWithinDays - 1));
+            prospects = prospects.Where(p => p.CreatedAt >= rangeStart);
+        }
+
         var totalItems = await prospects.CountAsync(ct);
 
         var items = await prospects
@@ -166,7 +182,9 @@ public class ProspectService(IHunterDbContext db, ICurrentUserService currentUse
                 p.OperationalPriority,
                 p.Contacts.Where(c => c.IsPrimary).Select(c => c.Value).FirstOrDefault()
                     ?? p.Contacts.Select(c => c.Value).FirstOrDefault(),
-                p.CreatedAt))
+                p.CreatedAt,
+                p.LastViewedAt,
+                db.MessageResponses.Where(r => r.ProspectId == p.Id).Max(r => (DateTimeOffset?)r.ReceivedAt)))
             .ToListAsync(ct);
 
         return new PagedResult<ProspectListItemDto>
@@ -352,6 +370,7 @@ public class ProspectService(IHunterDbContext db, ICurrentUserService currentUse
                 p.Status,
                 p.CreatedAt,
                 p.LastContactedAt,
+                p.LastViewedAt,
                 p.Contacts.Select(c => new ProspectContactDto(c.Id, c.Channel, c.Value, c.IsPrimary, c.IsVerified)).ToList(),
                 p.Sources.Select(s => new ProspectSourceDto(s.Id, s.SourceType, s.ExternalId, s.SourceUrl, s.CollectedAt)).ToList(),
                 p.ProspectTags.Select(pt => pt.Tag.Name).ToList()))

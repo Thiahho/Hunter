@@ -15,4 +15,6 @@ public record ProspectListItemDto(
     int? CommercialScore,
     OperationalPriority? OperationalPriority,
     string? PrimaryContactValue,
-    DateTimeOffset CreatedAt);
+    DateTimeOffset CreatedAt,
+    DateTimeOffset? LastViewedAt,
+    DateTimeOffset? LastMessageAt);

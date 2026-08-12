@@ -53,6 +53,8 @@ export interface ProspectListItem {
   operationalPriority: OperationalPriority | null;
   primaryContactValue: string | null;
   createdAt: string;
+  lastViewedAt: string | null;
+  lastMessageAt: string | null;
 }
 
 export interface ProspectContact {
@@ -91,6 +93,7 @@ export interface Prospect {
   status: ProspectStatus;
   createdAt: string;
   lastContactedAt: string | null;
+  lastViewedAt: string | null;
   contacts: ProspectContact[];
   sources: ProspectSource[];
   tags: string[];
@@ -105,6 +108,7 @@ export interface ProspectQuery {
   tag?: string;
   source?: ProspectSourceType;
   businessSize?: BusinessSize;
+  createdWithinDays?: number;
   page?: number;
   pageSize?: number;
 }

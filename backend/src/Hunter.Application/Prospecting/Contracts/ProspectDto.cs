@@ -30,6 +30,7 @@ public record ProspectDto(
     ProspectStatus Status,
     DateTimeOffset CreatedAt,
     DateTimeOffset? LastContactedAt,
+    DateTimeOffset? LastViewedAt,
     IReadOnlyCollection<ProspectContactDto> Contacts,
     IReadOnlyCollection<ProspectSourceDto> Sources,
     IReadOnlyCollection<string> Tags);

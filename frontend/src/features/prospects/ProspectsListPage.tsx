@@ -73,6 +73,36 @@ const statusLabels: Record<ProspectStatus, string> = {
 
 const PAGE_SIZE = 20;
 
+const createdWithinOptions: { value: number | ''; label: string }[] = [
+  { value: '', label: 'Todos' },
+  { value: 1, label: 'Agregados hoy' },
+  { value: 7, label: 'Últimos 7 días' },
+  { value: 30, label: 'Últimos 30 días' },
+];
+
+function isToday(isoDate: string): boolean {
+  const d = new Date(isoDate);
+  const now = new Date();
+  return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
+}
+
+function formatAddedAt(isoDate: string): string {
+  const d = new Date(isoDate);
+  if (isToday(isoDate)) {
+    return `Hoy ${d.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}`;
+  }
+  const diffDays = Math.floor((Date.now() - d.getTime()) / 86_400_000);
+  if (diffDays === 1) return 'Ayer';
+  if (diffDays > 1 && diffDays < 7) return `Hace ${diffDays} días`;
+  return d.toLocaleDateString('es-AR');
+}
+
+function hasUnseenActivity(p: ProspectListItem): boolean {
+  if (!p.lastMessageAt) return false;
+  if (!p.lastViewedAt) return true;
+  return new Date(p.lastMessageAt).getTime() > new Date(p.lastViewedAt).getTime();
+}
+
 type PendingDeletion = { kind: 'single'; prospect: ProspectListItem } | { kind: 'bulk'; ids: number[] };
 
 export function ProspectsListPage() {
@@ -80,18 +110,20 @@ export function ProspectsListPage() {
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState<ProspectCategory | ''>('');
   const [status, setStatus] = useState<ProspectStatus | ''>('');
+  const [createdWithinDays, setCreatedWithinDays] = useState<number | ''>('');
   const [page, setPage] = useState(1);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [pendingDeletion, setPendingDeletion] = useState<PendingDeletion | null>(null);
   const [showBulkSend, setShowBulkSend] = useState(false);
 
   const { data, isLoading, isError, error } = useQuery({
-    queryKey: ['prospects', { search, category, status, page }],
+    queryKey: ['prospects', { search, category, status, createdWithinDays, page }],
     queryFn: () =>
       searchProspects({
         search: search || undefined,
         category: category || undefined,
         status: status || undefined,
+        createdWithinDays: createdWithinDays || undefined,
         page,
         pageSize: PAGE_SIZE,
       }),
@@ -190,6 +222,20 @@ export function ProspectsListPage() {
             </option>
           ))}
         </select>
+        <select
+          value={createdWithinDays}
+          onChange={(e) => {
+            setCreatedWithinDays(e.target.value ? Number(e.target.value) : '');
+            changePage(1);
+          }}
+          className="rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-1.5 text-sm text-slate-900 dark:text-slate-100"
+        >
+          {createdWithinOptions.map((o) => (
+            <option key={o.label} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </select>
       </div>
 
       {isLoading && <p className="text-sm text-slate-500 dark:text-slate-400">Cargando prospectos...</p>}
@@ -242,6 +288,7 @@ export function ProspectsListPage() {
                   <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">Ciudad</th>
                   <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">Estado</th>
                   <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">Contacto</th>
+                  <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">Agregado</th>
                   <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">Mapa</th>
                   <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">Acciones</th>
                 </tr>
@@ -261,17 +308,35 @@ export function ProspectsListPage() {
                       />
                     </td>
                     <td className="px-4 py-2">
-                      <Link
-                        to={`/app/prospects/${p.id}`}
-                        className="font-medium text-indigo-600 dark:text-indigo-400 hover:underline"
-                      >
-                        {p.businessName}
-                      </Link>
+                      <div className="flex items-center gap-1.5">
+                        {hasUnseenActivity(p) && (
+                          <span
+                            title="Tiene mensajes nuevos sin revisar"
+                            className="h-2 w-2 shrink-0 rounded-full bg-sky-500"
+                          />
+                        )}
+                        <Link
+                          to={`/app/prospects/${p.id}`}
+                          className="font-medium text-indigo-600 dark:text-indigo-400 hover:underline"
+                        >
+                          {p.businessName}
+                        </Link>
+                      </div>
                     </td>
                     <td className="px-4 py-2 text-slate-600 dark:text-slate-300">{categoryLabels[p.category]}</td>
                     <td className="px-4 py-2 text-slate-600 dark:text-slate-300">{p.city ?? '—'}</td>
                     <td className="px-4 py-2 text-slate-600 dark:text-slate-300">{statusLabels[p.status]}</td>
                     <td className="px-4 py-2 text-slate-600 dark:text-slate-300">{p.primaryContactValue ?? '—'}</td>
+                    <td className="px-4 py-2 text-slate-600 dark:text-slate-300">
+                      <div className="flex items-center gap-1.5">
+                        {isToday(p.createdAt) && (
+                          <span className="rounded-full bg-emerald-100 dark:bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700 dark:text-emerald-400">
+                            Nuevo
+                          </span>
+                        )}
+                        <span>{formatAddedAt(p.createdAt)}</span>
+                      </div>
+                    </td>
                     <td className="px-4 py-2">
                       {mapsLink ? (
                         <a
@@ -309,7 +374,7 @@ export function ProspectsListPage() {
                 })}
                 {data.items.length === 0 && (
                   <tr>
-                    <td colSpan={8} className="px-4 py-6 text-center text-slate-400">
+                    <td colSpan={9} className="px-4 py-6 text-center text-slate-400">
                       No se encontraron prospectos.
                     </td>
                   </tr>

@@ -42,6 +42,11 @@ public class Prospect : Entity
 
     public DateTimeOffset? LastContactedAt { get; set; }
 
+    // Cuándo alguien del equipo abrió la ficha del prospecto por última vez (ver
+    // ProspectService.GetByIdAsync). Sirve para distinguir en el listado los prospectos con
+    // mensajes nuevos que todavía nadie revisó de los que ya se revisaron.
+    public DateTimeOffset? LastViewedAt { get; set; }
+
     public ICollection<ProspectContact> Contacts { get; set; } = new List<ProspectContact>();
     public ICollection<ProspectSource> Sources { get; set; } = new List<ProspectSource>();
     public ICollection<ProspectTag> ProspectTags { get; set; } = new List<ProspectTag>();

@@ -29,11 +29,12 @@ public class ProspectsController(
         [FromQuery] string? tag,
         [FromQuery] ProspectSourceType? source,
         [FromQuery] BusinessSize? businessSize,
+        [FromQuery] int? createdWithinDays,
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 50,
         CancellationToken ct = default)
     {
-        var query = new ProspectQuery(search, category, city, province, status, tag, source, businessSize, page, pageSize);
+        var query = new ProspectQuery(search, category, city, province, status, tag, source, businessSize, createdWithinDays, page, pageSize);
         var result = await prospectService.SearchAsync(query, ct);
         return Ok(ApiResponse<PagedResult<ProspectListItemDto>>.Ok(result));
     }
