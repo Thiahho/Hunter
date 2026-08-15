@@ -33,7 +33,11 @@ public class ManualTelegramAlertService(
         if (whatsappContact is null)
             return Result<bool>.Failure("El prospecto no tiene un contacto de WhatsApp cargado.");
 
-        var lastInbound = await db.MessageResponses.IgnoreQueryFilters()
+        // Sin IgnoreQueryFilters: prospectId ya se validó contra el filtro global de Prospects
+        // arriba, así que MessageResponses también puede pasar por su propio filtro de tenant sin
+        // perder nada — antes era un patrón frágil que dependía de esa validación previa nunca
+        // sacarse en un refactor futuro (auditoria.md, hallazgo Bajo).
+        var lastInbound = await db.MessageResponses
             .Where(r => r.ProspectId == prospectId)
             .OrderByDescending(r => r.ReceivedAt)
             .FirstOrDefaultAsync(ct);

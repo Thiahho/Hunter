@@ -6,7 +6,7 @@
     }
   },
   "ConnectionStrings": {
-    "HunterDb": "Host=localhost;Port=5432;Database=bd_hunter;Username=postgres;Password=CHANGE_ME"
+    "HunterDb": "Host=localhost;Port=5433;Database=bdHunter_;Username=postgres;Password=CHANGE_ME"
   },
   "Jwt": {
     "SigningKey": "CHANGE_ME_AT_LEAST_32_RANDOM_BYTES_BASE64"

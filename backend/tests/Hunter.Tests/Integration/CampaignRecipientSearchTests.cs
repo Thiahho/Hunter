@@ -61,7 +61,7 @@ public class CampaignRecipientSearchTests
 
         await using var assertDb = TestDb.Create(dbName, organizationId: orgId, userId: 1);
         var service = CreateService(assertDb, orgId);
-        var result = await service.SearchRecipientsAsync(campaignId: null, status: CampaignRecipientStatus.Failed, page: 1, pageSize: 30);
+        var result = await service.SearchRecipientsAsync(search: null, campaignId: null, status: CampaignRecipientStatus.Failed, page: 1, pageSize: 30);
 
         var item = Assert.Single(result.Items);
         Assert.False(item.IsCampaignRecipient);
@@ -131,7 +131,7 @@ public class CampaignRecipientSearchTests
 
         await using var assertDb = TestDb.Create(dbName, organizationId: orgId, userId: 1);
         var service = CreateService(assertDb, orgId);
-        var result = await service.SearchRecipientsAsync(campaignId: null, status: CampaignRecipientStatus.Failed, page: 1, pageSize: 30);
+        var result = await service.SearchRecipientsAsync(search: null, campaignId: null, status: CampaignRecipientStatus.Failed, page: 1, pageSize: 30);
 
         Assert.Equal(2, result.TotalItems);
         Assert.Contains(result.Items, i => i.IsCampaignRecipient);
@@ -189,7 +189,7 @@ public class CampaignRecipientSearchTests
 
         await using var assertDb = TestDb.Create(dbName, organizationId: orgId, userId: 1);
         var service = CreateService(assertDb, orgId);
-        var result = await service.SearchRecipientsAsync(campaignId: campaignId, status: CampaignRecipientStatus.Failed, page: 1, pageSize: 30);
+        var result = await service.SearchRecipientsAsync(search: null, campaignId: campaignId, status: CampaignRecipientStatus.Failed, page: 1, pageSize: 30);
 
         Assert.Empty(result.Items);
     }

@@ -1,9 +1,11 @@
 using Hunter.Application.Auth;
 using Hunter.Application.Auth.Contracts;
 using Hunter.Application.Common;
+using Hunter.Domain.Identity;
 using Hunter.Shared;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace Hunter.Api.Controllers;
 
@@ -11,8 +13,13 @@ namespace Hunter.Api.Controllers;
 [Route("api/v1/auth")]
 public class AuthController(IAuthService authService, ICurrentUserService currentUserService) : ControllerBase
 {
+    // Antes era [AllowAnonymous]: cualquiera en internet podía crear una organización nueva
+    // (auditoria.md, hallazgo Bajo "registro sin fricción"). Crea una organización + usuario
+    // Owner independiente de la del que llama, así que no importa a cuál organización
+    // pertenezca quien la crea — solo que sea Owner o Admin de alguna.
     [HttpPost("register")]
-    [AllowAnonymous]
+    [Authorize(Roles = $"{RoleNames.Owner},{RoleNames.Admin}")]
+    [EnableRateLimiting("register")]
     public async Task<IActionResult> Register(RegisterOrganizationRequest request, CancellationToken ct)
     {
         var result = await authService.RegisterOrganizationAsync(request, ct);
@@ -24,6 +31,7 @@ public class AuthController(IAuthService authService, ICurrentUserService curren
 
     [HttpPost("login")]
     [AllowAnonymous]
+    [EnableRateLimiting("login")]
     public async Task<IActionResult> Login(LoginRequest request, CancellationToken ct)
     {
         var result = await authService.LoginAsync(request, ct);
@@ -35,6 +43,7 @@ public class AuthController(IAuthService authService, ICurrentUserService curren
 
     [HttpPost("refresh")]
     [AllowAnonymous]
+    [EnableRateLimiting("refresh")]
     public async Task<IActionResult> Refresh(RefreshTokenRequest request, CancellationToken ct)
     {
         var result = await authService.RefreshAsync(request, ct);

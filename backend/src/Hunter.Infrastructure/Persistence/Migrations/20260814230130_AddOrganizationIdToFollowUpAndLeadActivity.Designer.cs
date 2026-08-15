@@ -3,6 +3,7 @@ using System;
 using Hunter.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Hunter.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(HunterDbContext))]
-    partial class HunterDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260814230130_AddOrganizationIdToFollowUpAndLeadActivity")]
+    partial class AddOrganizationIdToFollowUpAndLeadActivity
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -753,43 +756,6 @@ namespace Hunter.Infrastructure.Persistence.Migrations
                         .HasDatabaseName("ix_lead_activities_organization_id_lead_id");
 
                     b.ToTable("lead_activities", (string)null);
-                });
-
-            modelBuilder.Entity("Hunter.Domain.Crm.LeadAssignmentCursor", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
-                        .HasColumnName("id");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<string>("Area")
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
-                        .HasColumnName("area");
-
-                    b.Property<int>("NextIndex")
-                        .HasColumnType("integer")
-                        .HasColumnName("next_index");
-
-                    b.Property<int>("OrganizationId")
-                        .HasColumnType("integer")
-                        .HasColumnName("organization_id");
-
-                    b.Property<int>("Version")
-                        .IsConcurrencyToken()
-                        .HasColumnType("integer")
-                        .HasColumnName("version");
-
-                    b.HasKey("Id")
-                        .HasName("pk_lead_assignment_cursors");
-
-                    b.HasIndex("OrganizationId", "Area")
-                        .IsUnique()
-                        .HasDatabaseName("ix_lead_assignment_cursors_organization_id_area");
-
-                    b.ToTable("lead_assignment_cursors", (string)null);
                 });
 
             modelBuilder.Entity("Hunter.Domain.Finance.Cost", b =>

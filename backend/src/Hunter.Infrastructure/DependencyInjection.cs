@@ -89,6 +89,10 @@ public static class DependencyInjection
         services.Configure<ScheduledMessageOptions>(configuration.GetSection(ScheduledMessageOptions.SectionName));
         services.AddHostedService<ScheduledMessageBackgroundService>();
 
+        services.AddScoped<IStaleLeadEscalationService, StaleLeadEscalationService>();
+        services.Configure<StaleLeadEscalationOptions>(configuration.GetSection(StaleLeadEscalationOptions.SectionName));
+        services.AddHostedService<StaleLeadEscalationBackgroundService>();
+
         services.Configure<GooglePlacesOptions>(configuration.GetSection(GooglePlacesOptions.SectionName));
         services.AddHttpClient<IGooglePlacesClient, GooglePlacesClient>(client =>
         {

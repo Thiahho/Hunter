@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Hunter.Api.Contracts;
@@ -15,9 +16,7 @@ using Microsoft.Extensions.Options;
 namespace Hunter.Api.Controllers;
 
 // Endpoint interno para proveedores/n8n (doc 19, sección 51): no usa JWT de usuario,
-// se protege con un secreto compartido en el header. La resolución de organización
-// por URL específica (un webhook por organización) queda para cuando n8n esté cableado;
-// por ahora el organizationId viaja explícito en el payload.
+// se protege con un secreto compartido en el header.
 [ApiController]
 [AllowAnonymous]
 [Route("api/v1/webhooks/messaging")]
@@ -37,7 +36,20 @@ public class WebhooksController(
         if (!IsValidSecret())
             return Unauthorized(ApiResponse<InboundMessageResultDto>.Fail("Secreto de webhook inválido."));
 
-        var result = await inboundMessageService.ProcessAsync(request, ct);
+        // El organizationId lo resuelve el servidor, nunca el caller: antes venía tal cual del
+        // body (request.OrganizationId), así que quien tuviera el secreto compartido podía
+        // apuntar el mensaje a CUALQUIER organización del sistema con solo cambiar ese campo
+        // (auditoria.md, hallazgo Medio #4). Mismo mecanismo de config que ya usa el webhook
+        // nativo de WhatsApp (WhatsAppCloudApiOptions.OrganizationId) — MVP de un solo tenant por
+        // deploy, multi-org queda para cuando n8n tenga un webhook por organización.
+        var organizationId = whatsAppOptions.Value.OrganizationId;
+        if (organizationId is null)
+        {
+            logger.LogError("[Webhook inbound] Recibido pero WhatsAppCloudApi:OrganizationId no está configurado.");
+            return BadRequest(ApiResponse<InboundMessageResultDto>.Fail("El servidor no tiene una organización configurada para este webhook."));
+        }
+
+        var result = await inboundMessageService.ProcessAsync(request with { OrganizationId = organizationId.Value }, ct);
         if (!result.Succeeded)
             return BadRequest(ApiResponse<InboundMessageResultDto>.Fail(result.Error!));
 
@@ -51,7 +63,15 @@ public class WebhooksController(
             return false;
 
         var provided = Request.Headers["X-Webhook-Secret"].ToString();
-        return !string.IsNullOrEmpty(provided) && provided == expected;
+        if (string.IsNullOrEmpty(provided))
+            return false;
+
+        // Comparación en tiempo constante, igual que TelegramWebhookSecretValidator y
+        // WhatsAppWebhookSignatureValidator (auditoria.md, hallazgo Medio #4) — un "==" normal
+        // corta en el primer byte distinto, filtrando por timing cuánto del secreto acertó quien
+        // ataca.
+        return CryptographicOperations.FixedTimeEquals(
+            Encoding.UTF8.GetBytes(provided), Encoding.UTF8.GetBytes(expected));
     }
 
     // Handshake de verificación que Meta hace una sola vez al dar de alta el webhook

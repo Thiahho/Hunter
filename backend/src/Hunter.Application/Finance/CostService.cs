@@ -14,6 +14,18 @@ public class CostService(IHunterDbContext db, ICurrentUserService currentUser) :
             return Result<CostDto>.Failure("El monto debe ser mayor a cero.");
         if (string.IsNullOrWhiteSpace(request.Provider))
             return Result<CostDto>.Failure("El proveedor es obligatorio.");
+        if (string.IsNullOrWhiteSpace(request.Currency) || request.Currency.Trim().Length != 3)
+            return Result<CostDto>.Failure("La moneda debe ser un código de 3 letras (ej. ARS, USD).");
+
+        if (request.CampaignId is not null)
+        {
+            // El filtro global de Campaigns ya acota esto a la propia organización: un
+            // CampaignId inexistente o de otra organización queda descartado acá en vez de
+            // guardarse como una FK que no apunta a nada real (auditoria.md, hallazgo Medio #3).
+            var campaignExists = await db.Campaigns.AnyAsync(c => c.Id == request.CampaignId, ct);
+            if (!campaignExists)
+                return Result<CostDto>.Failure("La campaña indicada no existe.");
+        }
 
         var cost = new Cost
         {
@@ -23,7 +35,7 @@ public class CostService(IHunterDbContext db, ICurrentUserService currentUser) :
             Provider = request.Provider.Trim(),
             ReferenceId = request.ReferenceId,
             Amount = request.Amount,
-            Currency = request.Currency,
+            Currency = request.Currency.Trim().ToUpperInvariant(),
             Date = request.Date ?? DateTimeOffset.UtcNow
         };
 

@@ -2,6 +2,7 @@ using System.Text.Json;
 using Hunter.Application.Campaigning;
 using Hunter.Application.Campaigning.Contracts;
 using Hunter.Application.Common;
+using Hunter.Application.Crm;
 using Hunter.Application.Prospecting.Contracts;
 using Hunter.Domain.Campaigning;
 using Hunter.Domain.Prospecting;
@@ -174,6 +175,18 @@ public class ScheduledProspectAutomationService(
                         ct);
                     return;
                 }
+            }
+
+            var (backlog, backlogThreshold) = await OpenLeadBacklogGuard.EvaluateAsync(db, automation.OrganizationId, ct);
+            if (backlog > backlogThreshold)
+            {
+                automation.Status = ScheduledAutomationStatus.Failed;
+                automation.ResultSummary =
+                    $"Importados {confirmResult.Value!.Created} prospectos, {addResult.Value!.Added} sumados a la campaña, " +
+                    $"pero NO se enviaron mensajes: hay {backlog} leads abiertos sin trabajar (umbral configurado: {backlogThreshold}). " +
+                    "Poné al día el seguimiento de esos leads antes de mandar contactos nuevos.";
+                await db.SaveChangesAsync(ct);
+                return;
             }
 
             // StartAsync falla si la campaña ya está Running (ej. otra automatización la arrancó

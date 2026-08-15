@@ -91,7 +91,7 @@ public static class LeadHandoffMessageBuilder
     private static string BuildSuggestedReply(Prospect prospect)
     {
         var greetingName = string.IsNullOrWhiteSpace(prospect.ContactName) ? prospect.BusinessName : prospect.ContactName;
-        return $"Hola {greetingName}! ¿Cómo estás? Mi nombre es Thiago, un gusto saludarte. Soy de Difrani, fábrica de mazas de rueda, rótulas, extremos y bieletas.";
+        return $"Hola {greetingName}! ¿Cómo estás? Soy de Difrani, fábrica de mazas de rueda, rótulas, extremos y bieletas.";
     }
 
     // https://wa.me/<número sin "+" ni espacios>?text=<mensaje pre-cargado, url-encoded>. Meta

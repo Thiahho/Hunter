@@ -30,6 +30,7 @@ public record LeadListItemDto(
     LeadPriority Priority,
     int? AssignedToUserId,
     DateTimeOffset CreatedAt,
+    DateTimeOffset? LastActivityAt,
     string? ProspectAddress,
     string? ProspectCity,
     string? ProspectProvince,
