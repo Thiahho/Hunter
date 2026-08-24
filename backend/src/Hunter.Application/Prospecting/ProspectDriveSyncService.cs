@@ -27,23 +27,41 @@ public class ProspectDriveSyncService(
         if (!exportResult.Succeeded)
             return Result<ProspectDriveSyncResultDto>.Failure(exportResult.Error!);
 
+        // ExportAllActiveAsync ya recorrió todos los prospectos activos para armar el workbook, pero
+        // no devuelve el conteo — se cuenta acá con la misma condición (!IsDeleted) en vez de tocar
+        // el contrato de ExportAllActiveAsync solo para este dato informativo.
+        var prospectCount = await db.Prospects.CountAsync(p => !p.IsDeleted, ct);
+
+        return await UploadAndPersistAsync(exportResult.Value!.Content, prospectCount, ct);
+    }
+
+    // Botón manual "Exportar a Excel" del listado de prospectos: en vez de descargar un archivo
+    // aparte, empuja la selección elegida al MISMO archivo compartido de Drive — mismo mecanismo
+    // que SyncAsync (Files.Update sobre el fileId guardado), así el equipo nunca tiene que andar
+    // buscando un .xlsx suelto en Descargas. El próximo tick automático (cada 30 min) va a
+    // sobreescribirlo igual con todos los prospectos activos — este método sirve para no esperar
+    // esos 30 minutos cuando alguien quiere ver ya mismo una selección puntual reflejada ahí.
+    public async Task<Result<ProspectDriveSyncResultDto>> SyncSelectionAsync(ExportProspectsToExcelRequest request, CancellationToken ct = default)
+    {
+        var exportResult = await prospectExportService.ExportAsync(request, ct);
+        if (!exportResult.Succeeded)
+            return Result<ProspectDriveSyncResultDto>.Failure(exportResult.Error!);
+
+        return await UploadAndPersistAsync(exportResult.Value!.Content, request.ProspectIds.Count, ct);
+    }
+
+    private async Task<Result<ProspectDriveSyncResultDto>> UploadAndPersistAsync(byte[] content, int prospectCount, CancellationToken ct)
+    {
         var organizationId = currentUser.OrganizationId!.Value;
         var existingFileId = await GetSettingAsync(organizationId, OrganizationSettingsKeys.GoogleDriveProspectsFileId, ct);
 
-        var fileId = await googleDriveClient.UploadOrUpdateAsync(
-            existingFileId, FileName, exportResult.Value!.Content, XlsxMimeType, ct);
-
+        var fileId = await googleDriveClient.UploadOrUpdateAsync(existingFileId, FileName, content, XlsxMimeType, ct);
         if (string.IsNullOrWhiteSpace(fileId))
             return Result<ProspectDriveSyncResultDto>.Failure("Google Drive no devolvió un Id de archivo válido.");
 
         var syncedAt = DateTimeOffset.UtcNow;
         await UpsertSettingAsync(organizationId, OrganizationSettingsKeys.GoogleDriveProspectsFileId, fileId, ct);
         await UpsertSettingAsync(organizationId, OrganizationSettingsKeys.GoogleDriveProspectsSyncedAt, syncedAt.ToString("O"), ct);
-
-        // ExportAllActiveAsync ya recorrió todos los prospectos activos para armar el workbook, pero
-        // no devuelve el conteo — se cuenta acá con la misma condición (!IsDeleted) en vez de tocar
-        // el contrato de ExportAllActiveAsync solo para este dato informativo.
-        var prospectCount = await db.Prospects.CountAsync(p => !p.IsDeleted, ct);
 
         return Result<ProspectDriveSyncResultDto>.Success(new ProspectDriveSyncResultDto(fileId, BuildDriveUrl(fileId), syncedAt, prospectCount));
     }

@@ -1,6 +1,8 @@
 using Hunter.Application.Common;
 using Hunter.Application.Prospecting;
+using Hunter.Application.Prospecting.Contracts;
 using Hunter.Domain.Organizations;
+using Hunter.Domain.Prospecting;
 using Hunter.Tests.TestSupport;
 using Microsoft.EntityFrameworkCore;
 
@@ -124,5 +126,71 @@ public class ProspectDriveSyncServiceTests
         Assert.NotNull(status);
         Assert.Equal("drive-file-1", status!.FileId);
         Assert.Equal("https://drive.google.com/file/d/drive-file-1/view", status.DriveUrl);
+    }
+
+    [Fact]
+    public async Task SyncSelectionAsync_PushesSelectionToTheSameSharedFile()
+    {
+        var dbName = TestDb.NewDbName();
+        var orgId = await SeedOrgAsync(dbName);
+        int prospectId;
+        await using (var seedDb = TestDb.Create(dbName, organizationId: orgId))
+        {
+            var prospect = new Prospect { OrganizationId = orgId, BusinessName = "Repuestos Test" };
+            seedDb.Prospects.Add(prospect);
+            await seedDb.SaveChangesAsync();
+            prospectId = prospect.Id;
+        }
+
+        var driveClient = new FakeGoogleDriveClient();
+
+        await using var db = TestDb.Create(dbName, organizationId: orgId);
+        var service = new ProspectDriveSyncService(
+            db, new FakeCurrentUserService { OrganizationId = orgId }, new ProspectExportService(db), driveClient);
+
+        var result = await service.SyncSelectionAsync(new ExportProspectsToExcelRequest([prospectId], []));
+
+        Assert.True(result.Succeeded);
+        Assert.Equal(1, result.Value!.ProspectCount);
+        Assert.Null(driveClient.LastExistingFileId); // primera vez: todavía no había ningún fileId guardado
+
+        await using var assertDb = TestDb.Create(dbName, organizationId: orgId);
+        var fileIdSetting = await assertDb.OrganizationSettings.FirstAsync(
+            s => s.OrganizationId == orgId && s.Key == OrganizationSettingsKeys.GoogleDriveProspectsFileId);
+        Assert.Equal("drive-file-1", fileIdSetting.Value);
+    }
+
+    [Fact]
+    public async Task SyncSelectionAsync_ThenSyncAsync_ReuseTheSameFileId()
+    {
+        var dbName = TestDb.NewDbName();
+        var orgId = await SeedOrgAsync(dbName);
+        int prospectId;
+        await using (var seedDb = TestDb.Create(dbName, organizationId: orgId))
+        {
+            var prospect = new Prospect { OrganizationId = orgId, BusinessName = "Repuestos Test" };
+            seedDb.Prospects.Add(prospect);
+            await seedDb.SaveChangesAsync();
+            prospectId = prospect.Id;
+        }
+
+        var driveClient = new FakeGoogleDriveClient();
+
+        await using (var selectionDb = TestDb.Create(dbName, organizationId: orgId))
+        {
+            var selectionService = new ProspectDriveSyncService(
+                selectionDb, new FakeCurrentUserService { OrganizationId = orgId }, new ProspectExportService(selectionDb), driveClient);
+            await selectionService.SyncSelectionAsync(new ExportProspectsToExcelRequest([prospectId], []));
+        }
+
+        await using var db = TestDb.Create(dbName, organizationId: orgId);
+        var service = new ProspectDriveSyncService(
+            db, new FakeCurrentUserService { OrganizationId = orgId }, new ProspectExportService(db), driveClient);
+
+        var result = await service.SyncAsync();
+
+        Assert.True(result.Succeeded);
+        Assert.Equal(2, driveClient.CallCount);
+        Assert.Equal("drive-file-1", driveClient.LastExistingFileId); // el auto-sync reusa el mismo archivo que ya empujó la selección manual
     }
 }

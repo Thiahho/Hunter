@@ -15,7 +15,6 @@ namespace Hunter.Api.Controllers;
 [Route("api/v1/prospects")]
 public class ProspectsController(
     IProspectService prospectService,
-    IProspectExportService prospectExportService,
     IProspectDriveSyncService prospectDriveSyncService,
     ITestMessageService testMessageService,
     IScheduledMessageService scheduledMessageService,
@@ -81,17 +80,18 @@ public class ProspectsController(
         return Ok(ApiResponse<bool>.Ok(true));
     }
 
+    // Ya no descarga un archivo local: empuja la selección al mismo archivo compartido de Drive
+    // (ver ProspectDriveSyncService.SyncSelectionAsync) — mismo destino que la sincronización
+    // automática, así el equipo siempre tiene un único link guardado en vez de andar buscando
+    // .xlsx sueltos en Descargas.
     [HttpPost("export")]
     public async Task<IActionResult> Export(ExportProspectsToExcelRequest request, CancellationToken ct)
     {
-        var result = await prospectExportService.ExportAsync(request, ct);
+        var result = await prospectDriveSyncService.SyncSelectionAsync(request, ct);
         if (!result.Succeeded)
-            return BadRequest(ApiResponse<bool>.Fail(result.Error!));
+            return BadRequest(ApiResponse<ProspectDriveSyncResultDto>.Fail(result.Error!));
 
-        return File(
-            result.Value!.Content,
-            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            result.Value.FileName);
+        return Ok(ApiResponse<ProspectDriveSyncResultDto>.Ok(result.Value!));
     }
 
     [HttpGet("drive-sync-status")]

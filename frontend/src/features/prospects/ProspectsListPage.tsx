@@ -468,7 +468,13 @@ export function ProspectsListPage() {
         />
       )}
 
-      {showExport && <ExportProspectsDialog prospectIds={[...selectedIds]} onClose={() => setShowExport(false)} />}
+      {showExport && (
+        <ExportProspectsDialog
+          prospectIds={[...selectedIds]}
+          onClose={() => setShowExport(false)}
+          onSynced={() => queryClient.invalidateQueries({ queryKey: ['prospects-drive-sync-status'] })}
+        />
+      )}
     </div>
   );
 }
