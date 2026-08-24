@@ -45,10 +45,36 @@ public class GoogleDriveClient(IOptions<GoogleDriveOptions> options) : IGoogleDr
             var updatedId = await TryUpdateAsync(service, existingFileId, fileName, content, sourceMimeType, ct);
             if (updatedId is not null)
                 return updatedId;
-            // existingFileId ya no existe (404: lo borraron a mano en Drive) — sigue abajo y crea uno nuevo.
+            // existingFileId ya no existe (404: lo borraron a mano en Drive) — sigue abajo.
+        }
+
+        // Antes de crear: buscar si ya hay un archivo con este nombre en la carpeta. Importa
+        // porque una cuenta de servicio NO tiene cuota propia de Drive en una cuenta personal de
+        // Google (0 bytes): crear un archivo nuevo como la cuenta de servicio falla con
+        // "storageQuotaExceeded", aunque la carpeta esté compartida con permiso de Editor —
+        // actualizar el CONTENIDO de un archivo que ya existe (con un dueño real, con cuota) sí
+        // funciona. Si alguien dejó un archivo placeholder con este nombre en la carpeta (a mano,
+        // ver la guía de configuración), se reusa acá en vez de intentar crear uno nuevo.
+        var foundId = await FindByNameAsync(service, opts.FolderId!, fileName, ct);
+        if (foundId is not null)
+        {
+            var updatedId = await TryUpdateAsync(service, foundId, fileName, content, sourceMimeType, ct);
+            if (updatedId is not null)
+                return updatedId;
         }
 
         return await CreateAsync(service, opts.FolderId!, fileName, content, sourceMimeType, ct);
+    }
+
+    private static async Task<string?> FindByNameAsync(DriveService service, string folderId, string fileName, CancellationToken ct)
+    {
+        var request = service.Files.List();
+        request.Q = $"name = '{fileName}' and '{folderId}' in parents and trashed = false";
+        request.Fields = "files(id)";
+        request.PageSize = 1;
+
+        var result = await request.ExecuteAsync(ct);
+        return result.Files?.FirstOrDefault()?.Id;
     }
 
     private static async Task<string> CreateAsync(
