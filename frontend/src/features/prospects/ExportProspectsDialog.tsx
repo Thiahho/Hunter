@@ -79,6 +79,11 @@ export function ExportProspectsDialog({
               Se van a sincronizar {prospectIds.length} prospecto(s) seleccionado(s) al mismo archivo compartido de
               Drive (no se descarga nada local), con un link de WhatsApp pre-cargado por cada plantilla que elijas.
             </p>
+            <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
+              Ojo: esto reemplaza el contenido del archivo compartido por SOLO estos {prospectIds.length}
+              {' '}— si querés que vuelva a tener todos los prospectos activos, usá "Sincronizar todos ahora" en el
+              listado (o esperá la próxima sincronización automática, cada 30 min).
+            </p>
 
             <div className="mt-4 space-y-2">
               <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">

@@ -277,3 +277,14 @@ export async function getDriveSyncStatus(): Promise<ProspectDriveSyncStatus | nu
   }
   return response.data.data ?? null;
 }
+
+// Fuerza ya mismo una sincronización completa (todos los prospectos activos) sin esperar el
+// próximo tick automático (cada 30 min) — útil para volver a dejar el archivo con el total
+// después de exportar una selección puntual.
+export async function syncDriveNow(): Promise<ProspectDriveSyncStatus> {
+  const response = await apiClient.post<ApiResponse<ProspectDriveSyncStatus>>('/prospects/drive-sync-now');
+  if (!response.data.success || !response.data.data) {
+    throw new Error(response.data.message ?? 'No se pudo sincronizar con Drive.');
+  }
+  return response.data.data;
+}

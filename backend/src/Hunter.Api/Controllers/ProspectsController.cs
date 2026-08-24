@@ -101,6 +101,20 @@ public class ProspectsController(
         return Ok(ApiResponse<ProspectDriveSyncResultDto?>.Ok(status));
     }
 
+    // Fuerza ya mismo una sincronización completa (todos los prospectos activos), sin esperar el
+    // próximo tick de ProspectDriveSyncBackgroundService (cada 30 min) — útil después de exportar
+    // una selección puntual (Export, arriba) para volver a dejar el archivo compartido con el
+    // total, sin tener que ir seleccionando página por página en el listado.
+    [HttpPost("drive-sync-now")]
+    public async Task<IActionResult> SyncDriveNow(CancellationToken ct)
+    {
+        var result = await prospectDriveSyncService.SyncAsync(ct);
+        if (!result.Succeeded)
+            return BadRequest(ApiResponse<ProspectDriveSyncResultDto>.Fail(result.Error!));
+
+        return Ok(ApiResponse<ProspectDriveSyncResultDto>.Ok(result.Value!));
+    }
+
     [HttpPost("{id:int}/test-message")]
     public async Task<IActionResult> SendTestMessage(int id, SendTestMessageRequest request, CancellationToken ct)
     {

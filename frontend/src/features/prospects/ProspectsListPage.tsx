@@ -5,6 +5,7 @@ import {
   deleteProspect,
   getDriveSyncStatus,
   searchProspects,
+  syncDriveNow,
   type ProspectCategory,
   type ProspectListItem,
   type ProspectStatus,
@@ -179,6 +180,10 @@ export function ProspectsListPage() {
   const allOnPageSelected = !!data && data.items.length > 0 && data.items.every((p) => selectedIds.has(p.id));
 
   const driveSyncQuery = useQuery({ queryKey: ['prospects-drive-sync-status'], queryFn: getDriveSyncStatus });
+  const driveSyncNowMutation = useMutation({
+    mutationFn: syncDriveNow,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['prospects-drive-sync-status'] }),
+  });
 
   return (
     <div className="space-y-4">
@@ -193,19 +198,35 @@ export function ProspectsListPage() {
       </div>
 
       {driveSyncQuery.data && (
-        <div className="rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 px-3 py-2 text-xs text-slate-600 dark:text-slate-300">
-          📄{' '}
-          <a
-            href={driveSyncQuery.data.driveUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="font-medium text-indigo-600 dark:text-indigo-400 hover:underline"
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 px-3 py-2 text-xs text-slate-600 dark:text-slate-300">
+          <span>
+            📄{' '}
+            <a
+              href={driveSyncQuery.data.driveUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="font-medium text-indigo-600 dark:text-indigo-400 hover:underline"
+            >
+              Ver Excel actualizado en Drive
+            </a>{' '}
+            · {driveSyncQuery.data.prospectCount} prospectos · última sincronización{' '}
+            {formatAddedAt(driveSyncQuery.data.syncedAt).toLowerCase()}
+          </span>
+          <button
+            type="button"
+            onClick={() => driveSyncNowMutation.mutate()}
+            disabled={driveSyncNowMutation.isPending}
+            title="Vuelve a subir TODOS los prospectos activos al archivo compartido, sin esperar la sincronización automática cada 30 min"
+            className="shrink-0 font-medium text-indigo-600 dark:text-indigo-400 hover:underline disabled:opacity-60"
           >
-            Ver Excel actualizado en Drive
-          </a>{' '}
-          · {driveSyncQuery.data.prospectCount} prospectos · última sincronización{' '}
-          {formatAddedAt(driveSyncQuery.data.syncedAt).toLowerCase()}
+            {driveSyncNowMutation.isPending ? 'Sincronizando…' : 'Sincronizar todos ahora'}
+          </button>
         </div>
+      )}
+      {driveSyncNowMutation.isError && (
+        <p className="text-xs text-red-600 dark:text-red-400">
+          {driveSyncNowMutation.error instanceof Error ? driveSyncNowMutation.error.message : 'No se pudo sincronizar con Drive.'}
+        </p>
       )}
 
       <div className="flex flex-wrap gap-3">

@@ -62,6 +62,7 @@ public class ProspectDriveSyncService(
         var syncedAt = DateTimeOffset.UtcNow;
         await UpsertSettingAsync(organizationId, OrganizationSettingsKeys.GoogleDriveProspectsFileId, fileId, ct);
         await UpsertSettingAsync(organizationId, OrganizationSettingsKeys.GoogleDriveProspectsSyncedAt, syncedAt.ToString("O"), ct);
+        await UpsertSettingAsync(organizationId, OrganizationSettingsKeys.GoogleDriveProspectsSyncedCount, prospectCount.ToString(), ct);
 
         return Result<ProspectDriveSyncResultDto>.Success(new ProspectDriveSyncResultDto(fileId, BuildDriveUrl(fileId), syncedAt, prospectCount));
     }
@@ -76,7 +77,13 @@ public class ProspectDriveSyncService(
 
         var syncedAtRaw = await GetSettingAsync(organizationId, OrganizationSettingsKeys.GoogleDriveProspectsSyncedAt, ct);
         var syncedAt = DateTimeOffset.TryParse(syncedAtRaw, out var parsed) ? parsed : (DateTimeOffset?)null;
-        var prospectCount = await db.Prospects.CountAsync(p => !p.IsDeleted, ct);
+
+        // Cuenta guardada en el momento de la sync (no el total activo actual): si la última
+        // sincronización fue una selección manual puntual (SyncSelectionAsync), el archivo tiene
+        // esa cantidad, no el total — mostrar el total en vivo acá era engañoso (el cartel decía
+        // "398 prospectos" con un archivo que en realidad solo tenía 20).
+        var syncedCountRaw = await GetSettingAsync(organizationId, OrganizationSettingsKeys.GoogleDriveProspectsSyncedCount, ct);
+        var prospectCount = int.TryParse(syncedCountRaw, out var parsedCount) ? parsedCount : 0;
 
         return new ProspectDriveSyncResultDto(fileId, BuildDriveUrl(fileId), syncedAt ?? DateTimeOffset.MinValue, prospectCount);
     }
