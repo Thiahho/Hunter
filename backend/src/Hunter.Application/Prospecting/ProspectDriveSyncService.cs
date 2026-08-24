@@ -16,7 +16,9 @@ public class ProspectDriveSyncService(
     IProspectExportService prospectExportService,
     IGoogleDriveClient googleDriveClient) : IProspectDriveSyncService
 {
-    private const string FileName = "Prospectos.xlsx";
+    // Sin ".xlsx": se sube como Google Sheet nativo (GoogleDriveClient lo convierte al subir), no
+    // como un archivo .xlsx real — mantener la extensión en el nombre visible era engañoso.
+    private const string FileName = "Prospectos";
     private const string XlsxMimeType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 
     public async Task<Result<ProspectDriveSyncResultDto>> SyncAsync(CancellationToken ct = default)

@@ -10,7 +10,7 @@ using Microsoft.Extensions.Options;
 
 namespace Hunter.Infrastructure.BackgroundJobs;
 
-// Mantiene "Prospectos.xlsx" siempre actualizado en la carpeta de Drive configurada — ver
+// Mantiene "Prospectos" (Google Sheet) siempre actualizado en la carpeta de Drive configurada — ver
 // ProspectDriveSyncService.SyncAsync, que hace el trabajo real (arma el Excel con
 // ProspectExportService.ExportAllActiveAsync y lo sube/actualiza vía IGoogleDriveClient). Sin
 // GoogleDriveOptions configurado (sin cuenta de servicio/carpeta) no hace falta un flag "Enabled"
