@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.RegularExpressions;
+using Hunter.Application.Common;
 using Hunter.Domain.Prospecting;
 
 namespace Hunter.Application.Crm;
@@ -61,7 +62,7 @@ public static class LeadHandoffMessageBuilder
         // y el mensaje listo para revisar y mandar. Sin sugerencia (no hay assigneeFirstName),
         // el link igual sirve para abrir el chat, solo que sin nada pre-cargado.
         var suggestedReply = string.IsNullOrWhiteSpace(assigneeFirstName) ? null : BuildSuggestedReply(prospect);
-        sb.AppendLine($"📱 {BuildWhatsAppLink(prospectWhatsApp, suggestedReply)}");
+        sb.AppendLine($"📱 {ProspectLinkBuilder.BuildWhatsAppLink(prospectWhatsApp, suggestedReply)}");
         sb.AppendLine($"📋 Derivar: {BuildDispatchLink(prospect, prospectWhatsApp)}");
 
         sb.AppendLine();
@@ -85,7 +86,7 @@ public static class LeadHandoffMessageBuilder
     {
         var suggestedReply = string.IsNullOrWhiteSpace(assigneeFirstName) ? null : BuildSuggestedReply(prospect);
         var contactName = string.IsNullOrWhiteSpace(prospect.ContactName) ? prospect.BusinessName : prospect.ContactName;
-        return new TelegramButton($"💬 Escribirle a {contactName}", BuildWhatsAppLink(prospectWhatsApp, suggestedReply));
+        return new TelegramButton($"💬 Escribirle a {contactName}", ProspectLinkBuilder.BuildWhatsAppLink(prospectWhatsApp, suggestedReply));
     }
 
     private static string BuildSuggestedReply(Prospect prospect)
@@ -93,14 +94,6 @@ public static class LeadHandoffMessageBuilder
         var greetingName = string.IsNullOrWhiteSpace(prospect.ContactName) ? prospect.BusinessName : prospect.ContactName;
         return $"Hola {greetingName}! ¿Cómo estás? Soy de Difrani, fábrica de mazas de rueda, rótulas, extremos y bieletas.";
     }
-
-    // https://wa.me/<número sin "+" ni espacios>?text=<mensaje pre-cargado, url-encoded>. Meta
-    // no exige "+", el normalizador de contactos ya deja solo dígitos, así que alcanza con
-    // interpolar directo.
-    private static string BuildWhatsAppLink(string phone, string? prefilledText = null) =>
-        prefilledText is null
-            ? $"https://wa.me/{phone}"
-            : $"https://wa.me/{phone}?text={Uri.EscapeDataString(prefilledText)}";
 
     // Link de derivación a un número fijo (seguimiento centralizado) con los datos del cliente
     // pre-cargados en formato lista, para no tener que ir al CRM a copiarlos a mano.
@@ -113,20 +106,10 @@ public static class LeadHandoffMessageBuilder
             $"Dirección: {prospect.Address ?? "-"}",
             $"Número: {prospectWhatsApp}",
             $"Rubro: {DisplayName(prospect.Category)}",
-            $"Maps: {BuildMapsLink(prospect)}"
+            $"Maps: {ProspectLinkBuilder.BuildMapsLink(prospect.BusinessName, prospect.Address, prospect.City)}"
         };
 
-        return BuildWhatsAppLink(DispatchWhatsAppNumber, string.Join("\n", lines));
-    }
-
-    // Sin lat/long confiable en todos los prospectos, se arma como búsqueda por nombre +
-    // dirección en vez de depender de coordenadas.
-    private static string BuildMapsLink(Prospect prospect)
-    {
-        var query = string.Join(" ", new[] { prospect.BusinessName, prospect.Address, prospect.City }
-            .Where(part => !string.IsNullOrWhiteSpace(part)));
-
-        return $"https://www.google.com/maps/search/?api=1&query={Uri.EscapeDataString(query)}";
+        return ProspectLinkBuilder.BuildWhatsAppLink(DispatchWhatsAppNumber, string.Join("\n", lines));
     }
 
     // Parámetros para la plantilla nuevo_lead (5 params: empresa, ciudad, rubro, score, mensaje).

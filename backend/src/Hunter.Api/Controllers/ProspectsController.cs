@@ -15,6 +15,7 @@ namespace Hunter.Api.Controllers;
 [Route("api/v1/prospects")]
 public class ProspectsController(
     IProspectService prospectService,
+    IProspectExportService prospectExportService,
     ITestMessageService testMessageService,
     IScheduledMessageService scheduledMessageService,
     IManualTelegramAlertService manualTelegramAlertService) : ControllerBase
@@ -77,6 +78,19 @@ public class ProspectsController(
             return NotFound(ApiResponse<bool>.Fail(result.Error!));
 
         return Ok(ApiResponse<bool>.Ok(true));
+    }
+
+    [HttpPost("export")]
+    public async Task<IActionResult> Export(ExportProspectsToExcelRequest request, CancellationToken ct)
+    {
+        var result = await prospectExportService.ExportAsync(request, ct);
+        if (!result.Succeeded)
+            return BadRequest(ApiResponse<bool>.Fail(result.Error!));
+
+        return File(
+            result.Value!.Content,
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            result.Value.FileName);
     }
 
     [HttpPost("{id:int}/test-message")]

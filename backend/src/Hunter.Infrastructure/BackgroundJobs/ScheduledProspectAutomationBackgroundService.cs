@@ -11,10 +11,12 @@ using Microsoft.Extensions.Options;
 namespace Hunter.Infrastructure.BackgroundJobs;
 
 // Dispara las automatizaciones programadas desde /app/prospects/search ("Programar
-// automatización"): busca en OSM, importa todo lo válido y arranca/continúa el envío de la
-// campaña — ver ScheduledProspectAutomationService.RunAsync, que hace el trabajo real. Cada
-// automatización vencida corre en su propio Task.Run (no bloquea el loop de polling): RunAsync
-// puede tardar minutos si tiene que vaciar la cola de envío respetando MessagesPerMinute.
+// automatización" y "Plan diario"): busca en OSM o Apify según Source, importa todo lo válido y
+// lo suma a la campaña "de sistema" (sin enviar — ver ScheduledProspectAutomationService.RunAsync,
+// que hace el trabajo real). Las vencidas de un mismo tick se procesan en serie, no en paralelo:
+// con el plan diario puede haber varias venciendo junto, y correrlas todas a la vez multiplicaría
+// las llamadas concurrentes contra Overpass/Apify sin necesidad — RunAsync ya no vacía ninguna
+// cola de envío (eso se cortó), así que el costo de serializar es mínimo.
 public class ScheduledProspectAutomationBackgroundService(
     IServiceScopeFactory scopeFactory,
     IOptions<ScheduledProspectAutomationOptions> options,
@@ -55,14 +57,14 @@ public class ScheduledProspectAutomationBackgroundService(
         {
             logger.LogInformation("[ProspectAutomation] Disparando automatización {Id} (org {OrganizationId}).", automation.Id, automation.OrganizationId);
 
-            // Fire-and-forget deliberado: RunAsync puede tardar minutos (drena la cola de envío
-            // con delays entre lotes) y no debe bloquear el próximo tick del polling ni las demás
-            // automatizaciones vencidas en este mismo ciclo.
-            _ = RunInBackgroundAsync(automation.Id, automation.OrganizationId, stoppingTokenForLifetime: ct);
+            // Secuencial a propósito (ver comentario de cabecera): RunAsync ya no vacía ninguna
+            // cola de envío, así que esperar cada una antes de seguir con la próxima no bloquea el
+            // polling por más que unos segundos por corrida.
+            await RunOneAsync(automation.Id, automation.OrganizationId, ct);
         }
     }
 
-    private async Task RunInBackgroundAsync(int automationId, int organizationId, CancellationToken stoppingTokenForLifetime)
+    private async Task RunOneAsync(int automationId, int organizationId, CancellationToken ct)
     {
         try
         {
@@ -70,13 +72,13 @@ public class ScheduledProspectAutomationBackgroundService(
             using var workScope = scopeFactory.CreateScope();
             var automationService = workScope.ServiceProvider.GetRequiredService<IScheduledProspectAutomationService>();
 
-            await automationService.RunAsync(automationId, stoppingTokenForLifetime);
+            await automationService.RunAsync(automationId, ct);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             // ScheduledProspectAutomationService.RunAsync ya captura sus propios fallos de
             // negocio en ResultSummary; esto solo cubre algo verdaderamente inesperado (ej. el
-            // scope se rompe) para que nunca quede un Task sin observar tirando una excepción.
+            // scope se rompe) para que una automatización vencida no tumbe el resto del tick.
             logger.LogError(ex, "[ProspectAutomation] Fallo inesperado ejecutando la automatización {Id}.", automationId);
         }
     }

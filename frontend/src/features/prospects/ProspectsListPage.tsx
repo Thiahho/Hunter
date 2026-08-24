@@ -4,6 +4,7 @@ import { Link } from 'react-router';
 import { deleteProspect, searchProspects, type ProspectCategory, type ProspectListItem, type ProspectStatus } from '../../api/prospects';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { BulkSendMessageDialog } from './BulkSendMessageDialog';
+import { ExportProspectsDialog } from './ExportProspectsDialog';
 
 function buildMapsLink(prospect: ProspectListItem): string | null {
   // typeof en vez de "!== null": si el backend todavía no manda estos campos (build vieja,
@@ -115,6 +116,7 @@ export function ProspectsListPage() {
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [pendingDeletion, setPendingDeletion] = useState<PendingDeletion | null>(null);
   const [showBulkSend, setShowBulkSend] = useState(false);
+  const [showExport, setShowExport] = useState(false);
 
   const { data, isLoading, isError, error } = useQuery({
     queryKey: ['prospects', { search, category, status, createdWithinDays, page }],
@@ -258,6 +260,13 @@ export function ProspectsListPage() {
                   className="rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-500"
                 >
                   Enviar mensaje
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowExport(true)}
+                  className="rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-500"
+                >
+                  Exportar a Excel
                 </button>
                 <button
                   type="button"
@@ -433,6 +442,8 @@ export function ProspectsListPage() {
           }}
         />
       )}
+
+      {showExport && <ExportProspectsDialog prospectIds={[...selectedIds]} onClose={() => setShowExport(false)} />}
     </div>
   );
 }

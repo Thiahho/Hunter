@@ -262,4 +262,73 @@ public class ScheduledProspectAutomationServiceTests
 
         Assert.False(result.Succeeded);
     }
+
+    [Fact]
+    public async Task CreateAsync_ApifyWithoutKeywords_ReturnsFailure()
+    {
+        var dbName = TestDb.NewDbName();
+        var orgId = await SeedOrgAsync(dbName);
+        await SeedActiveWhatsappTemplateAsync(dbName, orgId);
+
+        await using var db = TestDb.Create(dbName, organizationId: orgId, userId: 1);
+        var service = new ScheduledProspectAutomationService(
+            db, new FakeCurrentUserService { OrganizationId = orgId, UserId = 1 }, null!, null!);
+
+        var request = new ScheduleProspectAutomationRequest(
+            ["Moreno"], null, 0, 50, DateTimeOffset.UtcNow.AddHours(1), null, ProspectAutomationSource.Apify);
+
+        var result = await service.CreateAsync(request);
+
+        Assert.False(result.Succeeded);
+        Assert.Contains("rubro", result.Error, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task CreateAsync_ApifyWithTooManyLocalities_ReturnsFailure()
+    {
+        var dbName = TestDb.NewDbName();
+        var orgId = await SeedOrgAsync(dbName);
+        await SeedActiveWhatsappTemplateAsync(dbName, orgId);
+
+        await using var db = TestDb.Create(dbName, organizationId: orgId, userId: 1);
+        var service = new ScheduledProspectAutomationService(
+            db, new FakeCurrentUserService { OrganizationId = orgId, UserId = 1 }, null!, null!);
+
+        var request = new ScheduleProspectAutomationRequest(
+            ["A", "B", "C", "D", "E", "F"], null, 0, 50, DateTimeOffset.UtcNow.AddHours(1),
+            ["repuestos"], ProspectAutomationSource.Apify);
+
+        var result = await service.CreateAsync(request);
+
+        Assert.False(result.Succeeded);
+        Assert.Contains("localidades", result.Error, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task CreateAsync_ApifyValid_PersistsSourceAndApifyCriteria()
+    {
+        var dbName = TestDb.NewDbName();
+        var orgId = await SeedOrgAsync(dbName);
+        await SeedActiveWhatsappTemplateAsync(dbName, orgId);
+
+        await using var db = TestDb.Create(dbName, organizationId: orgId, userId: 1);
+        var service = new ScheduledProspectAutomationService(
+            db, new FakeCurrentUserService { OrganizationId = orgId, UserId = 1 }, null!, null!);
+
+        var request = new ScheduleProspectAutomationRequest(
+            ["Moreno"], null, 0, 100, DateTimeOffset.UtcNow.AddHours(1), ["mayorista"], ProspectAutomationSource.Apify);
+
+        var result = await service.CreateAsync(request);
+
+        Assert.True(result.Succeeded);
+        Assert.Equal(ProspectAutomationSource.Apify, result.Value!.Source);
+        Assert.Contains("mayorista", result.Value.Keywords!);
+
+        await using var assertDb = TestDb.Create(dbName, organizationId: orgId);
+        var automation = await assertDb.ScheduledProspectAutomations.FirstAsync(a => a.Id == result.Value.Id);
+        Assert.Equal(ProspectAutomationSource.Apify, automation.Source);
+        var criteria = System.Text.Json.JsonSerializer.Deserialize<ApifyImportRequest>(automation.SearchCriteriaJson);
+        Assert.Contains("Moreno", criteria!.Localities);
+        Assert.Contains("mayorista", criteria.Keywords);
+    }
 }

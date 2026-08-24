@@ -247,3 +247,19 @@ export async function sendTelegramAlert(prospectId: number): Promise<void> {
     throw new Error(response.data.message ?? 'No se pudo enviar la alerta a Telegram.');
   }
 }
+
+export async function exportProspectsToExcel(prospectIds: number[], messageTemplateIds: number[]): Promise<void> {
+  const response = await apiClient.post(
+    '/prospects/export',
+    { prospectIds, messageTemplateIds },
+    { responseType: 'blob' },
+  );
+  const url = URL.createObjectURL(response.data as Blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `prospectos-${new Date().toISOString().slice(0, 10)}.xlsx`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}

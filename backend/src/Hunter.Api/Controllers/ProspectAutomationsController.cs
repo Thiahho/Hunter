@@ -12,7 +12,9 @@ namespace Hunter.Api.Controllers;
 [ApiController]
 [Authorize]
 [Route("api/v1/prospect-automations")]
-public class ProspectAutomationsController(IScheduledProspectAutomationService automationService) : ControllerBase
+public class ProspectAutomationsController(
+    IScheduledProspectAutomationService automationService,
+    IDailyProspectingPlanService dailyProspectingPlanService) : ControllerBase
 {
     [HttpGet]
     public async Task<IActionResult> List(CancellationToken ct)
@@ -29,6 +31,18 @@ public class ProspectAutomationsController(IScheduledProspectAutomationService a
             return BadRequest(ApiResponse<ScheduledProspectAutomationDto>.Fail(result.Error!));
 
         return Ok(ApiResponse<ScheduledProspectAutomationDto>.Ok(result.Value!));
+    }
+
+    // Reparte un pool grande de localidades en varias automatizaciones escalonadas (OSM + Apify)
+    // en vez de una sola corrida acotada a 5 localidades — ver DailyProspectingPlanService.
+    [HttpPost("daily-plan")]
+    public async Task<IActionResult> CreateDailyPlan(CreateDailyProspectingPlanRequest request, CancellationToken ct)
+    {
+        var result = await dailyProspectingPlanService.CreateAsync(request, ct);
+        if (!result.Succeeded)
+            return BadRequest(ApiResponse<DailyProspectingPlanDto>.Fail(result.Error!));
+
+        return Ok(ApiResponse<DailyProspectingPlanDto>.Ok(result.Value!));
     }
 
     [HttpPost("{id:int}/cancel")]
