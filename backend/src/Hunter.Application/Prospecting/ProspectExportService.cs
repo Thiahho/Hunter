@@ -36,6 +36,35 @@ public class ProspectExportService(IHunterDbContext db) : IProspectExportService
                 .OrderBy(t => t.Name)
                 .ToListAsync(ct);
 
+        var bytes = BuildWorkbookBytes(prospects, templates);
+        var fileName = $"prospectos-{DateTime.UtcNow:yyyy-MM-dd}.xlsx";
+        return Result<ProspectExcelExportResult>.Success(new ProspectExcelExportResult(bytes, fileName));
+    }
+
+    // Para el archivo que se mantiene siempre sincronizado en Drive (ver ProspectDriveSyncService):
+    // TODOS los prospectos activos, sin filtro de selección, con TODAS las plantillas de WhatsApp
+    // vigentes (mismo criterio de "vigente" que ResolveDefaultCampaignAsync en
+    // ScheduledProspectAutomationService, pero sin exigir que haya exactamente una — acá entran
+    // todas las que califiquen, cada una suma su propio par de columnas).
+    public async Task<Result<ProspectExcelExportResult>> ExportAllActiveAsync(CancellationToken ct = default)
+    {
+        var prospects = await db.Prospects
+            .Include(p => p.Contacts)
+            .Where(p => !p.IsDeleted)
+            .OrderBy(p => p.BusinessName)
+            .ToListAsync(ct);
+
+        var templates = await db.MessageTemplates
+            .Where(t => t.Channel == MessagingChannel.Whatsapp && t.IsActive && !t.IsCatalogTemplate && !t.IsFollowUpTemplate)
+            .OrderBy(t => t.Name)
+            .ToListAsync(ct);
+
+        var bytes = BuildWorkbookBytes(prospects, templates);
+        return Result<ProspectExcelExportResult>.Success(new ProspectExcelExportResult(bytes, "Prospectos.xlsx"));
+    }
+
+    private static byte[] BuildWorkbookBytes(IReadOnlyList<Prospect> prospects, IReadOnlyList<MessageTemplate> templates)
+    {
         using var workbook = new XLWorkbook();
         var sheet = workbook.Worksheets.Add("Prospectos");
 
@@ -95,9 +124,7 @@ public class ProspectExportService(IHunterDbContext db) : IProspectExportService
 
         using var stream = new MemoryStream();
         workbook.SaveAs(stream);
-
-        var fileName = $"prospectos-{DateTime.UtcNow:yyyy-MM-dd}.xlsx";
-        return Result<ProspectExcelExportResult>.Success(new ProspectExcelExportResult(stream.ToArray(), fileName));
+        return stream.ToArray();
     }
 
     private static void StyleAsLink(IXLCell cell)

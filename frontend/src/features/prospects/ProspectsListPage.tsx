@@ -1,7 +1,14 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router';
-import { deleteProspect, searchProspects, type ProspectCategory, type ProspectListItem, type ProspectStatus } from '../../api/prospects';
+import {
+  deleteProspect,
+  getDriveSyncStatus,
+  searchProspects,
+  type ProspectCategory,
+  type ProspectListItem,
+  type ProspectStatus,
+} from '../../api/prospects';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { BulkSendMessageDialog } from './BulkSendMessageDialog';
 import { ExportProspectsDialog } from './ExportProspectsDialog';
@@ -171,6 +178,8 @@ export function ProspectsListPage() {
 
   const allOnPageSelected = !!data && data.items.length > 0 && data.items.every((p) => selectedIds.has(p.id));
 
+  const driveSyncQuery = useQuery({ queryKey: ['prospects-drive-sync-status'], queryFn: getDriveSyncStatus });
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -182,6 +191,22 @@ export function ProspectsListPage() {
           Nuevo prospecto
         </Link>
       </div>
+
+      {driveSyncQuery.data && (
+        <div className="rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 px-3 py-2 text-xs text-slate-600 dark:text-slate-300">
+          📄{' '}
+          <a
+            href={driveSyncQuery.data.driveUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="font-medium text-indigo-600 dark:text-indigo-400 hover:underline"
+          >
+            Ver Excel actualizado en Drive
+          </a>{' '}
+          · {driveSyncQuery.data.prospectCount} prospectos · última sincronización{' '}
+          {formatAddedAt(driveSyncQuery.data.syncedAt).toLowerCase()}
+        </div>
+      )}
 
       <div className="flex flex-wrap gap-3">
         <input

@@ -19,6 +19,7 @@ public static class DependencyInjection
         services.AddScoped<IProspectDuplicateFinder, ProspectDuplicateFinder>();
         services.AddScoped<IProspectService, ProspectService>();
         services.AddScoped<IProspectExportService, ProspectExportService>();
+        services.AddScoped<IProspectDriveSyncService, ProspectDriveSyncService>();
         services.AddScoped<ITagService, TagService>();
         services.AddScoped<IImportService, ImportService>();
         services.AddScoped<IScheduledProspectAutomationService, ScheduledProspectAutomationService>();

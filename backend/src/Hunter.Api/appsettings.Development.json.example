@@ -37,6 +37,13 @@
     "ActorId": "compass~crawler-google-places",
     "TimeoutSeconds": 280
   },
+  "GoogleDrive": {
+    "ServiceAccountKeyBase64": "",
+    "FolderId": ""
+  },
+  "ProspectDriveSync": {
+    "PollIntervalMinutes": 30
+  },
   "CampaignQueue": {
     "Enabled": false,
     "PollIntervalSeconds": 60

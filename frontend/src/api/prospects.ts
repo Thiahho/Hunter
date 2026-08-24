@@ -263,3 +263,20 @@ export async function exportProspectsToExcel(prospectIds: number[], messageTempl
   link.remove();
   URL.revokeObjectURL(url);
 }
+
+export interface ProspectDriveSyncStatus {
+  fileId: string;
+  driveUrl: string;
+  syncedAt: string;
+  prospectCount: number;
+}
+
+// null = todavía no sincronizó nunca (GoogleDrive sin configurar, o el primer tick del
+// background service todavía no corrió) — ver ProspectDriveSyncService.GetStatusAsync.
+export async function getDriveSyncStatus(): Promise<ProspectDriveSyncStatus | null> {
+  const response = await apiClient.get<ApiResponse<ProspectDriveSyncStatus | null>>('/prospects/drive-sync-status');
+  if (!response.data.success) {
+    throw new Error(response.data.message ?? 'No se pudo obtener el estado de sincronización con Drive.');
+  }
+  return response.data.data ?? null;
+}

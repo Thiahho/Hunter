@@ -62,6 +62,12 @@ services:
       # de fuente sigue mostrándose pero la búsqueda falla con el error de Apify.
       Apify__ApiToken: ${APIFY_API_TOKEN:-}
       Apify__ActorId: ${APIFY_ACTOR_ID:-compass~crawler-google-places}
+      # Sincroniza "Prospectos.xlsx" en una carpeta de Drive compartida (ver la guía de
+      # configuración en docs/12). Sin estas dos variables, ProspectDriveSyncBackgroundService no
+      # hace nada (usa un cliente stub que solo loguea).
+      GoogleDrive__ServiceAccountKeyBase64: ${GOOGLE_DRIVE_SERVICE_ACCOUNT_KEY_BASE64:-}
+      GoogleDrive__FolderId: ${GOOGLE_DRIVE_FOLDER_ID:-}
+      ProspectDriveSync__PollIntervalMinutes: ${PROSPECT_DRIVE_SYNC_POLL_INTERVAL_MINUTES:-30}
       # Sin esto, las alertas de lead nuevo caen a StubTelegramNotifier (solo loguea, no manda
       # nada real). Token/username dados por @BotFather. WebhookSecret es el secret_token que se
       # configura al registrar el webhook (setWebhook) — ver instrucciones de deploy.

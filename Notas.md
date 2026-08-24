@@ -22,6 +22,35 @@ Bloqueante a tener en cuenta: Meta necesita pegarle a una URL pública HTTPS
 Mientras el backend no esté deployado, hace falta un túnel (Cloudflare Tunnel / ngrok) para
 probar el webhook real.
 
+## Google Drive — cuenta de servicio para sincronizar el Excel de prospectos
+
+Sección `GoogleDrive` en `appsettings`. Ver
+`backend/src/Hunter.Infrastructure/GoogleDrive/GoogleDriveOptions.cs`. Sin estas dos variables
+configuradas, `ProspectDriveSyncBackgroundService` no hace nada (usa un cliente stub que solo
+loguea) — no rompe el arranque.
+
+| Campo en Hunter | De dónde sale en Google Cloud |
+|---|---|
+| `ServiceAccountKeyBase64` | Google Cloud Console → tu proyecto → APIs & Services → Credentials → la cuenta de servicio → pestaña Keys → Add Key → JSON. El archivo `.json` descargado, **completo, en base64** (Linux/Mac: `base64 -i archivo.json`; PowerShell: `[Convert]::ToBase64String([IO.File]::ReadAllBytes("archivo.json"))`) |
+| `FolderId` | El ID de la carpeta de Drive en `https://drive.google.com/drive/folders/<ESTE_ID>` — la carpeta tiene que estar **compartida con el email de la cuenta de servicio** (`...@tu-proyecto.iam.gserviceaccount.com`) con permiso Editor |
+
+Pasos completos para crear la cuenta de servicio (no hay una todavía):
+1. [Google Cloud Console](https://console.cloud.google.com/) → crear/elegir un proyecto.
+2. APIs & Services → Library → buscar "Google Drive API" → Enable.
+3. APIs & Services → Credentials → Create Credentials → Service Account (sin roles de IAM: el
+   acceso se da compartiendo la carpeta de Drive, no por rol de proyecto).
+4. Entrar a la cuenta de servicio → Keys → Add Key → Create new key → JSON → se descarga el
+   archivo. Convertirlo a base64 (ver tabla arriba) → `GOOGLE_DRIVE_SERVICE_ACCOUNT_KEY_BASE64`.
+5. En Drive (con tu cuenta normal): crear/elegir la carpeta destino, compartirla con el email de
+   la cuenta de servicio (permiso Editor), copiar el ID de la carpeta de la URL →
+   `GOOGLE_DRIVE_FOLDER_ID`.
+6. Compartir esa misma carpeta con el resto del equipo (Lector alcanza) — así todos ven
+   "Prospectos.xlsx" actualizarse solo, sin tener que pedir el link cada vez.
+7. Cargar las dos variables en Render (o `docker/.env` en local) y reiniciar/redeployar.
+
+El archivo se sube como Google Sheet nativo (no un `.xlsx` para descargar): se abre directo en el
+navegador, filtra y se puede comentar, ideal para que el equipo comercial lo mire desde el celu.
+
 ## Deploy — Vercel (frontend) + Render (backend)
 
 - **Frontend → Vercel.** SPA con Vite (`frontend/package.json`: React 19 + Vite + Tailwind).

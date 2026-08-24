@@ -16,6 +16,7 @@ namespace Hunter.Api.Controllers;
 public class ProspectsController(
     IProspectService prospectService,
     IProspectExportService prospectExportService,
+    IProspectDriveSyncService prospectDriveSyncService,
     ITestMessageService testMessageService,
     IScheduledMessageService scheduledMessageService,
     IManualTelegramAlertService manualTelegramAlertService) : ControllerBase
@@ -91,6 +92,13 @@ public class ProspectsController(
             result.Value!.Content,
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             result.Value.FileName);
+    }
+
+    [HttpGet("drive-sync-status")]
+    public async Task<IActionResult> GetDriveSyncStatus(CancellationToken ct)
+    {
+        var status = await prospectDriveSyncService.GetStatusAsync(ct);
+        return Ok(ApiResponse<ProspectDriveSyncResultDto?>.Ok(status));
     }
 
     [HttpPost("{id:int}/test-message")]

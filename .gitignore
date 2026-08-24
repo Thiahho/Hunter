@@ -13,6 +13,14 @@ backend/**/appsettings.*.local.json
 .env
 docker/.env
 
+# Clave de cuenta de servicio de Google (Drive sync) — nunca debería vivir en el repo, se pasa en
+# base64 por variable de entorno (GoogleDrive__ServiceAccountKeyBase64). Cubre el nombre que
+# Google Cloud Console genera por default y variantes comunes si alguien la renombra.
+*service-account*.json
+*serviceaccount*.json
+google-drive-key*.json
+gcp-key*.json
+
 # Frontend (when it exists)
 frontend/node_modules/
 frontend/dist/

@@ -129,4 +129,65 @@ public class ProspectExportServiceTests
 
         Assert.False(result.Succeeded);
     }
+
+    [Fact]
+    public async Task ExportAllActiveAsync_IncludesAllNonDeletedProspectsAndOnlyEligibleTemplates()
+    {
+        var dbName = TestDb.NewDbName();
+        await using var seedDb = TestDb.Create(dbName);
+        var org = new Organization { Name = "Difrani" };
+        seedDb.Organizations.Add(org);
+        await seedDb.SaveChangesAsync();
+
+        var eligibleTemplate = new MessageTemplate
+        {
+            OrganizationId = org.Id,
+            Name = "Bienvenida",
+            Content = "Hola {{business_name}}",
+            Channel = MessagingChannel.Whatsapp,
+            IsActive = true
+        };
+        var inactiveTemplate = new MessageTemplate
+        {
+            OrganizationId = org.Id,
+            Name = "Vieja",
+            Content = "Vieja",
+            Channel = MessagingChannel.Whatsapp,
+            IsActive = false
+        };
+        var catalogTemplate = new MessageTemplate
+        {
+            OrganizationId = org.Id,
+            Name = "Catálogo",
+            Content = "Catálogo",
+            Channel = MessagingChannel.Whatsapp,
+            IsActive = true,
+            IsCatalogTemplate = true
+        };
+        seedDb.MessageTemplates.AddRange(eligibleTemplate, inactiveTemplate, catalogTemplate);
+
+        var active = new Prospect { OrganizationId = org.Id, BusinessName = "Activo" };
+        var deleted = new Prospect { OrganizationId = org.Id, BusinessName = "Borrado", IsDeleted = true };
+        seedDb.Prospects.AddRange(active, deleted);
+        await seedDb.SaveChangesAsync();
+
+        await using var db = TestDb.Create(dbName, organizationId: org.Id);
+        var service = new ProspectExportService(db);
+
+        var result = await service.ExportAllActiveAsync();
+
+        Assert.True(result.Succeeded);
+        Assert.Equal("Prospectos.xlsx", result.Value!.FileName);
+
+        using var workbook = new XLWorkbook(new MemoryStream(result.Value.Content));
+        var sheet = workbook.Worksheet("Prospectos");
+
+        // Solo la plantilla elegible suma columnas: 9 base + 2 (Mensaje/WhatsApp) = 11.
+        Assert.Equal("Bienvenida — Mensaje", sheet.Cell(1, 10).GetString());
+        Assert.Equal("Bienvenida — WhatsApp", sheet.Cell(1, 11).GetString());
+        Assert.True(string.IsNullOrEmpty(sheet.Cell(1, 12).GetString()));
+
+        Assert.Equal("Activo", sheet.Cell(2, 1).GetString());
+        Assert.True(string.IsNullOrEmpty(sheet.Cell(3, 1).GetString())); // "Borrado" no aparece
+    }
 }
