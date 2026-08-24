@@ -1,6 +1,7 @@
 using ClosedXML.Excel;
 using Hunter.Application.Campaigning;
 using Hunter.Application.Common;
+using Hunter.Application.Crm;
 using Hunter.Application.Prospecting.Contracts;
 using Hunter.Domain.Campaigning;
 using Hunter.Domain.Prospecting;
@@ -23,7 +24,7 @@ public class ProspectExportService(IHunterDbContext db) : IProspectExportService
         var prospects = await db.Prospects
             .Include(p => p.Contacts)
             .Where(p => request.ProspectIds.Contains(p.Id) && !p.IsDeleted)
-            .OrderBy(p => p.BusinessName)
+            .OrderByDescending(p => p.CreatedAt)
             .ToListAsync(ct);
 
         if (prospects.Count == 0)
@@ -51,7 +52,7 @@ public class ProspectExportService(IHunterDbContext db) : IProspectExportService
         var prospects = await db.Prospects
             .Include(p => p.Contacts)
             .Where(p => !p.IsDeleted)
-            .OrderBy(p => p.BusinessName)
+            .OrderByDescending(p => p.CreatedAt)
             .ToListAsync(ct);
 
         var templates = await db.MessageTemplates
@@ -68,7 +69,11 @@ public class ProspectExportService(IHunterDbContext db) : IProspectExportService
         using var workbook = new XLWorkbook();
         var sheet = workbook.Worksheets.Add("Prospectos");
 
-        var headers = new List<string> { "Negocio", "Contacto", "Categoría", "Ciudad", "Provincia", "Dirección", "Teléfono", "Estado", "Maps" };
+        var headers = new List<string>
+        {
+            "Negocio", "Contacto", "Categoría", "Ciudad", "Provincia", "Dirección", "Teléfono", "Estado", "Agregado", "Maps",
+            "WhatsApp — Mensaje predeterminado", "WhatsApp — Link"
+        };
         foreach (var template in templates)
         {
             headers.Add($"{template.Name} — Mensaje");
@@ -93,11 +98,31 @@ public class ProspectExportService(IHunterDbContext db) : IProspectExportService
             sheet.Cell(row, col++).Value = prospect.Address ?? string.Empty;
             sheet.Cell(row, col++).Value = phone ?? string.Empty;
             sheet.Cell(row, col++).Value = prospect.Status.ToString();
+            sheet.Cell(row, col++).Value = prospect.CreatedAt.UtcDateTime;
 
             var mapsCell = sheet.Cell(row, col++);
             mapsCell.Value = "Ver mapa";
             mapsCell.SetHyperlink(new XLHyperlink(ProspectLinkBuilder.BuildMapsLink(prospect.BusinessName, prospect.Address, prospect.City)));
             StyleAsLink(mapsCell);
+
+            // Columna siempre presente, no depende de que haya una MessageTemplate activa (a
+            // diferencia de las columnas por plantilla de abajo) — mismo saludo por defecto que
+            // ya se usa en la derivación de leads por Telegram (LeadHandoffMessageBuilder), para
+            // no tener dos mensajes "por defecto" distintos dando vueltas.
+            var defaultMessage = LeadHandoffMessageBuilder.BuildDefaultGreeting(prospect);
+            sheet.Cell(row, col++).Value = defaultMessage;
+
+            var defaultLinkCell = sheet.Cell(row, col++);
+            if (phone is null)
+            {
+                defaultLinkCell.Value = "Sin teléfono";
+            }
+            else
+            {
+                defaultLinkCell.Value = "Abrir WhatsApp";
+                defaultLinkCell.SetHyperlink(new XLHyperlink(ProspectLinkBuilder.BuildWhatsAppLink(phone, defaultMessage)));
+                StyleAsLink(defaultLinkCell);
+            }
 
             foreach (var template in templates)
             {
@@ -121,6 +146,14 @@ public class ProspectExportService(IHunterDbContext db) : IProspectExportService
         }
 
         sheet.Columns().AdjustToContents();
+
+        // Fila de encabezado siempre visible al bajar (evita el "scroll infinito" en un archivo
+        // que ya tiene cientos de filas y va a seguir creciendo) + autofiltro con los desplegables
+        // nativos de Excel/Sheets en cada columna, para ordenar/filtrar por Estado, Agregado, etc.
+        // sin tener que tocar nada del lado del backend.
+        sheet.SheetView.FreezeRows(1);
+        if (row > 2)
+            sheet.Range(1, 1, row - 1, headers.Count).SetAutoFilter();
 
         using var stream = new MemoryStream();
         workbook.SaveAs(stream);

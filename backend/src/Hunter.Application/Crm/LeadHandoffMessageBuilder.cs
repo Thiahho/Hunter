@@ -61,7 +61,7 @@ public static class LeadHandoffMessageBuilder
         // textbox del chat (parámetro ?text=): un clic abre WhatsApp con el prospecto correcto
         // y el mensaje listo para revisar y mandar. Sin sugerencia (no hay assigneeFirstName),
         // el link igual sirve para abrir el chat, solo que sin nada pre-cargado.
-        var suggestedReply = string.IsNullOrWhiteSpace(assigneeFirstName) ? null : BuildSuggestedReply(prospect);
+        var suggestedReply = string.IsNullOrWhiteSpace(assigneeFirstName) ? null : BuildDefaultGreeting(prospect);
         sb.AppendLine($"📱 {ProspectLinkBuilder.BuildWhatsAppLink(prospectWhatsApp, suggestedReply)}");
         sb.AppendLine($"📋 Derivar: {BuildDispatchLink(prospect, prospectWhatsApp)}");
 
@@ -84,12 +84,14 @@ public static class LeadHandoffMessageBuilder
     // sin depender de que Telegram detecte el link suelto como clickeable.
     public static TelegramButton BuildWhatsAppButton(Prospect prospect, string prospectWhatsApp, string? assigneeFirstName = null)
     {
-        var suggestedReply = string.IsNullOrWhiteSpace(assigneeFirstName) ? null : BuildSuggestedReply(prospect);
+        var suggestedReply = string.IsNullOrWhiteSpace(assigneeFirstName) ? null : BuildDefaultGreeting(prospect);
         var contactName = string.IsNullOrWhiteSpace(prospect.ContactName) ? prospect.BusinessName : prospect.ContactName;
         return new TelegramButton($"💬 Escribirle a {contactName}", ProspectLinkBuilder.BuildWhatsAppLink(prospectWhatsApp, suggestedReply));
     }
 
-    private static string BuildSuggestedReply(Prospect prospect)
+    // Público porque también lo reusa ProspectExportService como mensaje por defecto de la
+    // columna de WhatsApp del Excel (no depende de que haya una MessageTemplate activa).
+    public static string BuildDefaultGreeting(Prospect prospect)
     {
         var greetingName = string.IsNullOrWhiteSpace(prospect.ContactName) ? prospect.BusinessName : prospect.ContactName;
         return $"Hola {greetingName}! ¿Cómo estás? Soy de Difrani, fábrica de mazas de rueda, rótulas, extremos y bieletas.";

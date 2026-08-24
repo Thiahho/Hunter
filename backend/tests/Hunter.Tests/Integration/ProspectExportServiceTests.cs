@@ -67,17 +67,34 @@ public class ProspectExportServiceTests
         using var workbook = new XLWorkbook(new MemoryStream(result.Value!.Content));
         var sheet = workbook.Worksheet("Prospectos");
 
-        Assert.Equal("Bienvenida — Mensaje", sheet.Cell(1, 10).GetString());
-        Assert.Equal("Bienvenida — WhatsApp", sheet.Cell(1, 11).GetString());
+        // Col 11/12: WhatsApp con mensaje por defecto (siempre presente). Col 13/14: la plantilla elegida.
+        Assert.Equal("WhatsApp — Mensaje predeterminado", sheet.Cell(1, 11).GetString());
+        Assert.Equal("WhatsApp — Link", sheet.Cell(1, 12).GetString());
+        Assert.Equal("Bienvenida — Mensaje", sheet.Cell(1, 13).GetString());
+        Assert.Equal("Bienvenida — WhatsApp", sheet.Cell(1, 14).GetString());
 
         Assert.Equal("Repuestos Oeste", sheet.Cell(2, 1).GetString());
-        Assert.Equal("Hola Repuestos Oeste, ¿cómo estás?", sheet.Cell(2, 10).GetString());
 
-        var linkCell = sheet.Cell(2, 11);
+        Assert.Equal(
+            "Hola Repuestos Oeste! ¿Cómo estás? Soy de Difrani, fábrica de mazas de rueda, rótulas, extremos y bieletas.",
+            sheet.Cell(2, 11).GetString());
+        var defaultLinkCell = sheet.Cell(2, 12);
+        Assert.Equal("Abrir WhatsApp", defaultLinkCell.GetString());
+        Assert.True(defaultLinkCell.HasHyperlink);
+        Assert.StartsWith("https://wa.me/5491112345678?text=", defaultLinkCell.GetHyperlink().ExternalAddress!.ToString());
+
+        Assert.Equal("Hola Repuestos Oeste, ¿cómo estás?", sheet.Cell(2, 13).GetString());
+
+        var linkCell = sheet.Cell(2, 14);
         Assert.Equal("Abrir WhatsApp", linkCell.GetString());
         Assert.True(linkCell.HasHyperlink);
         var link = linkCell.GetHyperlink().ExternalAddress!.ToString();
         Assert.StartsWith("https://wa.me/5491112345678?text=", link);
+
+        // Encabezado siempre visible (FreezeRows(1) deja SplitRow=1) + autofiltro con los
+        // desplegables de ordenar/filtrar de Excel.
+        Assert.Equal(1, sheet.SheetView.SplitRow);
+        Assert.True(sheet.AutoFilter.IsEnabled);
     }
 
     [Fact]
@@ -113,7 +130,11 @@ public class ProspectExportServiceTests
         using var workbook = new XLWorkbook(new MemoryStream(result.Value!.Content));
         var sheet = workbook.Worksheet("Prospectos");
 
-        var linkCell = sheet.Cell(2, 11);
+        var defaultLinkCell = sheet.Cell(2, 12);
+        Assert.Equal("Sin teléfono", defaultLinkCell.GetString());
+        Assert.False(defaultLinkCell.HasHyperlink);
+
+        var linkCell = sheet.Cell(2, 14);
         Assert.Equal("Sin teléfono", linkCell.GetString());
         Assert.False(linkCell.HasHyperlink);
     }
@@ -182,10 +203,13 @@ public class ProspectExportServiceTests
         using var workbook = new XLWorkbook(new MemoryStream(result.Value.Content));
         var sheet = workbook.Worksheet("Prospectos");
 
-        // Solo la plantilla elegible suma columnas: 9 base + 2 (Mensaje/WhatsApp) = 11.
-        Assert.Equal("Bienvenida — Mensaje", sheet.Cell(1, 10).GetString());
-        Assert.Equal("Bienvenida — WhatsApp", sheet.Cell(1, 11).GetString());
-        Assert.True(string.IsNullOrEmpty(sheet.Cell(1, 12).GetString()));
+        // 10 columnas base (incluye "Agregado") + 2 de WhatsApp con mensaje por defecto (siempre)
+        // + 2 de la plantilla elegible (solo la activa/no-catálogo/no-follow-up) = 14.
+        Assert.Equal("WhatsApp — Mensaje predeterminado", sheet.Cell(1, 11).GetString());
+        Assert.Equal("WhatsApp — Link", sheet.Cell(1, 12).GetString());
+        Assert.Equal("Bienvenida — Mensaje", sheet.Cell(1, 13).GetString());
+        Assert.Equal("Bienvenida — WhatsApp", sheet.Cell(1, 14).GetString());
+        Assert.True(string.IsNullOrEmpty(sheet.Cell(1, 15).GetString()));
 
         Assert.Equal("Activo", sheet.Cell(2, 1).GetString());
         Assert.True(string.IsNullOrEmpty(sheet.Cell(3, 1).GetString())); // "Borrado" no aparece
