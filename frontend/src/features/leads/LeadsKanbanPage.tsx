@@ -25,6 +25,35 @@ const priorityColors: Record<Lead['priority'], string> = {
   High: 'bg-red-50 text-red-700 dark:bg-red-500/10 dark:text-red-300',
 };
 
+// Mismo umbral por defecto que StaleLeadEscalationBackgroundService (backend) usa cuando la
+// organización no configuró OrganizationSettingsKeys.StaleLeadEscalationHours: es solo para
+// resaltar la tarjeta antes de que llegue el recordatorio por Telegram, no gobierna el envío.
+const STALE_THRESHOLD_HOURS = 24;
+
+function hoursSince(isoDate: string): number {
+  return (Date.now() - new Date(isoDate).getTime()) / (1000 * 60 * 60);
+}
+
+function StalenessBadge({ lead }: { lead: LeadListItem }) {
+  if (lead.status !== 'New' && lead.status !== 'InProgress') return null;
+  const reference = lead.lastActivityAt ?? lead.createdAt;
+  const hours = hoursSince(reference);
+  const days = Math.floor(hours / 24);
+  const isStale = hours >= STALE_THRESHOLD_HOURS;
+
+  return (
+    <span
+      className={`mt-1 ml-1 inline-block rounded px-1.5 py-0.5 text-xs ${
+        isStale
+          ? 'bg-red-50 text-red-700 dark:bg-red-500/10 dark:text-red-300'
+          : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400'
+      }`}
+    >
+      {days >= 1 ? `Hace ${days}d sin actividad` : 'Actividad reciente'}
+    </span>
+  );
+}
+
 const lostReasons: LostReason[] = [
   'Price',
   'NoStock',
@@ -88,6 +117,7 @@ function LeadCard({
         <span className={`mt-1 inline-block rounded px-1.5 py-0.5 text-xs ${priorityColors[lead.priority]}`}>
           {lead.priority}
         </span>
+        <StalenessBadge lead={lead} />
       </Link>
       {moveOptions.length > 0 && (
         <select

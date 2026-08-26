@@ -84,7 +84,7 @@ public class LeadHandoffNotificationTests
         Assert.Contains("92", handoff.Content);
         Assert.Contains("me interesa, pasame info", handoff.Content);
         Assert.Contains("📱 https://wa.me/5491112345678", handoff.Content); // clic directo al chat, sin ir al CRM
-        Assert.Contains("Mi nombre es Juan", handoff.Content); // sugerencia de respuesta con el nombre del vendedor asignado
+        Assert.Contains("💬 Sugerencia de respuesta:", handoff.Content); // se arma sugerencia porque hay assigneeFirstName, sin firmar con ningún nombre
         Assert.True(handoff.PreferFreeText); // sin HandoffTemplateName configurada, cae a texto libre
     }
 

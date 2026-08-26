@@ -1,3 +1,5 @@
+using Hunter.Application.Crm;
+using Hunter.Domain.Crm;
 using Hunter.Domain.Organizations;
 using Hunter.Domain.Prospecting;
 using Hunter.Tests.TestSupport;
@@ -69,5 +71,65 @@ public class MultiTenancyIsolationTests
         var result = await anonymousDb.Prospects.ToListAsync();
 
         Assert.Empty(result);
+    }
+
+    // Regresión de auditoria.md hallazgo #1: FollowUp no tenía OrganizationId ni query filter,
+    // así que CompleteFollowUpAsync buscaba solo por Id y cualquier usuario autenticado de
+    // CUALQUIER organización podía completar (o antes, ver) el seguimiento de otra con solo
+    // adivinar el Id. El fix agrega OrganizationId + HasQueryFilter a FollowUp.
+    [Fact]
+    public async Task CompleteFollowUp_FromAnotherOrganization_FailsAndLeavesFollowUpUntouched()
+    {
+        var dbName = TestDb.NewDbName();
+
+        Organization orgA, orgB;
+        int followUpId;
+        await using (var seedDb = TestDb.Create(dbName))
+        {
+            orgA = new Organization { Name = "Difrani" };
+            orgB = new Organization { Name = "Tauro Parts" };
+            seedDb.Organizations.AddRange(orgA, orgB);
+            await seedDb.SaveChangesAsync();
+        }
+
+        await using (var dbA = TestDb.Create(dbName, organizationId: orgA.Id))
+        {
+            var prospect = new Prospect { OrganizationId = orgA.Id, BusinessName = "Repuestos Oeste" };
+            dbA.Prospects.Add(prospect);
+            await dbA.SaveChangesAsync();
+
+            var lead = new Lead { OrganizationId = orgA.Id, ProspectId = prospect.Id };
+            dbA.Leads.Add(lead);
+            await dbA.SaveChangesAsync();
+
+            var followUp = new FollowUp
+            {
+                OrganizationId = orgA.Id,
+                LeadId = lead.Id,
+                UserId = 1,
+                ScheduledAt = DateTimeOffset.UtcNow.AddDays(1)
+            };
+            dbA.FollowUps.Add(followUp);
+            await dbA.SaveChangesAsync();
+            followUpId = followUp.Id;
+        }
+
+        // Org B intenta completar un seguimiento que nunca fue suyo, solo conociendo su Id.
+        await using (var dbB = TestDb.Create(dbName, organizationId: orgB.Id, userId: 99))
+        {
+            var leadServiceB = new LeadService(dbB, new FakeCurrentUserService { OrganizationId = orgB.Id, UserId = 99 });
+            var result = await leadServiceB.CompleteFollowUpAsync(followUpId);
+
+            Assert.False(result.Succeeded);
+        }
+
+        // El seguimiento sigue Pending: org B no logró tocarlo, y org A todavía lo puede completar.
+        await using (var dbA2 = TestDb.Create(dbName, organizationId: orgA.Id, userId: 1))
+        {
+            var leadServiceA = new LeadService(dbA2, new FakeCurrentUserService { OrganizationId = orgA.Id, UserId = 1 });
+            var result = await leadServiceA.CompleteFollowUpAsync(followUpId);
+
+            Assert.True(result.Succeeded);
+        }
     }
 }

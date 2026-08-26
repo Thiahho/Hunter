@@ -5,6 +5,7 @@ using Hunter.Application.Common;
 using Hunter.Application.Crm;
 using Hunter.Application.Prospecting;
 using Hunter.Infrastructure.BackgroundJobs;
+using Hunter.Infrastructure.GoogleDrive;
 using Hunter.Infrastructure.Messaging;
 using Hunter.Infrastructure.Persistence;
 using Hunter.Infrastructure.Prospecting;
@@ -80,6 +81,17 @@ public static class DependencyInjection
             services.AddScoped<ITelegramNotifier, StubTelegramNotifier>();
         }
 
+        services.Configure<GoogleDriveOptions>(configuration.GetSection(GoogleDriveOptions.SectionName));
+        var googleDriveOptions = configuration.GetSection(GoogleDriveOptions.SectionName).Get<GoogleDriveOptions>();
+
+        if (googleDriveOptions?.IsConfigured == true)
+            services.AddScoped<IGoogleDriveClient, GoogleDriveClient>();
+        else
+            services.AddScoped<IGoogleDriveClient, StubGoogleDriveClient>();
+
+        services.Configure<ProspectDriveSyncOptions>(configuration.GetSection(ProspectDriveSyncOptions.SectionName));
+        services.AddHostedService<ProspectDriveSyncBackgroundService>();
+
         services.Configure<CampaignQueueOptions>(configuration.GetSection(CampaignQueueOptions.SectionName));
         services.AddHostedService<CampaignQueueBackgroundService>();
 
@@ -88,6 +100,10 @@ public static class DependencyInjection
 
         services.Configure<ScheduledMessageOptions>(configuration.GetSection(ScheduledMessageOptions.SectionName));
         services.AddHostedService<ScheduledMessageBackgroundService>();
+
+        services.AddScoped<IStaleLeadEscalationService, StaleLeadEscalationService>();
+        services.Configure<StaleLeadEscalationOptions>(configuration.GetSection(StaleLeadEscalationOptions.SectionName));
+        services.AddHostedService<StaleLeadEscalationBackgroundService>();
 
         services.Configure<GooglePlacesOptions>(configuration.GetSection(GooglePlacesOptions.SectionName));
         services.AddHttpClient<IGooglePlacesClient, GooglePlacesClient>(client =>

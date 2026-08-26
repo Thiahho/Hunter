@@ -15,6 +15,7 @@ namespace Hunter.Api.Controllers;
 [Route("api/v1/prospects")]
 public class ProspectsController(
     IProspectService prospectService,
+    IProspectDriveSyncService prospectDriveSyncService,
     ITestMessageService testMessageService,
     IScheduledMessageService scheduledMessageService,
     IManualTelegramAlertService manualTelegramAlertService) : ControllerBase
@@ -77,6 +78,41 @@ public class ProspectsController(
             return NotFound(ApiResponse<bool>.Fail(result.Error!));
 
         return Ok(ApiResponse<bool>.Ok(true));
+    }
+
+    // Ya no descarga un archivo local: empuja la selección al mismo archivo compartido de Drive
+    // (ver ProspectDriveSyncService.SyncSelectionAsync) — mismo destino que la sincronización
+    // automática, así el equipo siempre tiene un único link guardado en vez de andar buscando
+    // .xlsx sueltos en Descargas.
+    [HttpPost("export")]
+    public async Task<IActionResult> Export(ExportProspectsToExcelRequest request, CancellationToken ct)
+    {
+        var result = await prospectDriveSyncService.SyncSelectionAsync(request, ct);
+        if (!result.Succeeded)
+            return BadRequest(ApiResponse<ProspectDriveSyncResultDto>.Fail(result.Error!));
+
+        return Ok(ApiResponse<ProspectDriveSyncResultDto>.Ok(result.Value!));
+    }
+
+    [HttpGet("drive-sync-status")]
+    public async Task<IActionResult> GetDriveSyncStatus(CancellationToken ct)
+    {
+        var status = await prospectDriveSyncService.GetStatusAsync(ct);
+        return Ok(ApiResponse<ProspectDriveSyncResultDto?>.Ok(status));
+    }
+
+    // Fuerza ya mismo una sincronización completa (todos los prospectos activos), sin esperar el
+    // próximo tick de ProspectDriveSyncBackgroundService (cada 30 min) — útil después de exportar
+    // una selección puntual (Export, arriba) para volver a dejar el archivo compartido con el
+    // total, sin tener que ir seleccionando página por página en el listado.
+    [HttpPost("drive-sync-now")]
+    public async Task<IActionResult> SyncDriveNow(CancellationToken ct)
+    {
+        var result = await prospectDriveSyncService.SyncAsync(ct);
+        if (!result.Succeeded)
+            return BadRequest(ApiResponse<ProspectDriveSyncResultDto>.Fail(result.Error!));
+
+        return Ok(ApiResponse<ProspectDriveSyncResultDto>.Ok(result.Value!));
     }
 
     [HttpPost("{id:int}/test-message")]

@@ -14,6 +14,7 @@ public class ScheduledProspectAutomationConfiguration : IEntityTypeConfiguration
 
         builder.Property(x => x.SearchCriteriaJson).HasColumnType("jsonb").IsRequired();
         builder.Property(x => x.Status).HasConversion<string>().HasMaxLength(20);
+        builder.Property(x => x.Source).HasConversion<string>().HasMaxLength(20);
         builder.Property(x => x.ResultSummary).HasMaxLength(2000);
 
         builder.HasIndex(x => new { x.OrganizationId, x.Status, x.ScheduledAt });

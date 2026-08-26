@@ -85,8 +85,11 @@ public class LeadHandoffMessageBuilderTests
     {
         var text = LeadHandoffMessageBuilder.BuildFreeText(FullProspect(), "hola", "5491112345678");
 
-        Assert.Contains("📱 https://wa.me/5491112345678", text);
-        Assert.DoesNotContain("?text=", text);
+        // El link personal del prospecto no lleva sugerencia sin assigneeFirstName; el link de
+        // derivación (BuildDispatchLink) sí lleva ?text= siempre, por eso se busca la línea puntual.
+        var personalLinkLine = text.Split('\n').Single(line => line.Contains("📱"));
+        Assert.Contains("https://wa.me/5491112345678", personalLinkLine);
+        Assert.DoesNotContain("?text=", personalLinkLine);
     }
 
     [Fact]
@@ -121,7 +124,7 @@ public class LeadHandoffMessageBuilderTests
         Assert.Contains(Uri.EscapeDataString("Dirección: Av. Rivadavia 1234"), text);
         Assert.Contains(Uri.EscapeDataString("Número: 5491112345678"), text);
         Assert.Contains(Uri.EscapeDataString("Rubro: Casa de repuestos"), text);
-        Assert.Contains(Uri.EscapeDataString("maps.google.com").ToLowerInvariant(), text.ToLowerInvariant());
+        Assert.Contains(Uri.EscapeDataString("www.google.com/maps").ToLowerInvariant(), text.ToLowerInvariant());
     }
 
     [Fact]

@@ -3,6 +3,7 @@ import type { ApiResponse } from './types';
 import type { ProspectCategory } from './prospects';
 
 export type ScheduledAutomationStatus = 'Pending' | 'Running' | 'Completed' | 'Failed' | 'Cancelled';
+export type ProspectAutomationSource = 'OpenStreetMap' | 'Apify';
 
 export interface ScheduledProspectAutomationDto {
   id: number;
@@ -18,6 +19,7 @@ export interface ScheduledProspectAutomationDto {
   resultSummary: string | null;
   createdAt: string;
   keywords: string[] | null;
+  source: ProspectAutomationSource;
 }
 
 export interface ScheduleProspectAutomationRequest {
@@ -27,6 +29,21 @@ export interface ScheduleProspectAutomationRequest {
   maxResults: number;
   scheduledAt: string;
   keywords?: string[];
+  source?: ProspectAutomationSource;
+}
+
+export interface CreateDailyProspectingPlanRequest {
+  localities: string[];
+  startAt: string;
+  intervalMinutes?: number;
+  radiusKm?: number;
+  includeApify?: boolean;
+}
+
+export interface DailyProspectingPlanDto {
+  automations: ScheduledProspectAutomationDto[];
+  estimatedCeiling: number;
+  localitiesCovered: number;
 }
 
 export async function listProspectAutomations(): Promise<ScheduledProspectAutomationDto[]> {
@@ -52,4 +69,12 @@ export async function cancelProspectAutomation(id: number): Promise<void> {
   if (!response.data.success) {
     throw new Error(response.data.message ?? 'No se pudo cancelar la automatización.');
   }
+}
+
+export async function createDailyProspectingPlan(request: CreateDailyProspectingPlanRequest): Promise<DailyProspectingPlanDto> {
+  const response = await apiClient.post<ApiResponse<DailyProspectingPlanDto>>('/prospect-automations/daily-plan', request);
+  if (!response.data.success || !response.data.data) {
+    throw new Error(response.data.message ?? 'No se pudo crear el plan diario.');
+  }
+  return response.data.data;
 }

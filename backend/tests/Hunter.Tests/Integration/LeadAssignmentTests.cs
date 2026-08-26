@@ -124,6 +124,74 @@ public class LeadAssignmentTests
         Assert.Null(picked);
     }
 
+    // Regresión del caso real (Difrani, agosto 2026): un lead asignado a un vendedor sin
+    // teléfono ni Telegram cargado se queda sin que nadie se entere. Mientras haya al menos un
+    // usuario notificable, el round-robin no debe tocar a los que no lo son.
+    [Fact]
+    public async Task PickNextAssignee_PrefersUsersWithNotificationChannelConfigured()
+    {
+        var dbName = TestDb.NewDbName();
+        int orgId;
+        int noChannelSellerId;
+        int notifiableSellerId;
+
+        await using (var db = TestDb.Create(dbName))
+        {
+            var org = new Organization { Name = "Difrani" };
+            db.Organizations.Add(org);
+            await db.SaveChangesAsync();
+            orgId = org.Id;
+
+            var noChannelSeller = new User
+            {
+                OrganizationId = orgId, FirstName = "SinContacto", LastName = "Test", Email = "sincontacto@difrani.com",
+                PasswordHash = "irrelevant", IsActive = true
+            };
+            db.Users.Add(noChannelSeller);
+            await db.SaveChangesAsync();
+            noChannelSellerId = noChannelSeller.Id;
+
+            var notifiableSeller = new User
+            {
+                OrganizationId = orgId, FirstName = "ConTelegram", LastName = "Test", Email = "contelegram@difrani.com",
+                PasswordHash = "irrelevant", IsActive = true, TelegramChatId = "123456"
+            };
+            db.Users.Add(notifiableSeller);
+            await db.SaveChangesAsync();
+            notifiableSellerId = notifiableSeller.Id;
+        }
+
+        var assignments = new List<int>();
+        for (var round = 0; round < 3; round++)
+        {
+            await using var db = TestDb.Create(dbName, organizationId: orgId);
+            var picked = await LeadAssignment.PickNextAssigneeAsync(db, orgId);
+            Assert.NotNull(picked);
+            assignments.Add(picked!.Value);
+
+            db.Leads.Add(new Lead { OrganizationId = orgId, ProspectId = 0, AssignedToUserId = picked, Status = LeadStatus.New, Priority = LeadPriority.Medium });
+            await db.SaveChangesAsync();
+        }
+
+        Assert.All(assignments, id => Assert.Equal(notifiableSellerId, id));
+        Assert.DoesNotContain(noChannelSellerId, assignments);
+    }
+
+    // Sin ningún usuario notificable todavía, el round-robin no debe dejar el lead sin asignar:
+    // cae al comportamiento histórico de repartir entre todos los activos.
+    [Fact]
+    public async Task PickNextAssignee_NoOneNotifiable_FallsBackToAllActiveSellers()
+    {
+        var dbName = TestDb.NewDbName();
+        var (orgId, sellerIds) = await SeedOrgWithSellersAsync(dbName, activeSellers: 3);
+
+        await using var db = TestDb.Create(dbName, organizationId: orgId);
+        var picked = await LeadAssignment.PickNextAssigneeAsync(db, orgId);
+
+        Assert.NotNull(picked);
+        Assert.Contains(picked!.Value, sellerIds);
+    }
+
     // Regresión específica: antes de acotar el cursor al conjunto de candidatos, el "último
     // asignado" de la org completa casi siempre pertenecía al área contraria, IndexOf devolvía
     // -1 y el round-robin de cada área colapsaba siempre en su primer usuario (starvation).
@@ -191,5 +259,38 @@ public class LeadAssignmentTests
 
         Assert.Equal([adminIds[0], adminIds[1], adminIds[0]], adminAssignments);
         Assert.Equal([ventasIds[0], ventasIds[1], ventasIds[2]], ventasAssignments);
+    }
+
+    // Regresión de auditoria.md hallazgo Medio "race condition en el round-robin": antes, dos
+    // requests concurrentes podían leer el mismo "último asignado" antes de que el primer Lead se
+    // guardara y elegir el mismo vendedor, salteando al que le tocaba. Con el cursor persistido +
+    // concurrencia optimista, N asignaciones concurrentes tienen que repartirse exactamente parejo
+    // entre los candidatos (a lo sumo 1 de diferencia entre el más y el menos asignado) — si el
+    // fix no cerrara la carrera, algún candidato quedaría sobre-representado y otro salteado.
+    [Fact]
+    public async Task PickNextAssignee_ConcurrentCalls_DistributesEvenlyWithoutDoubleAssigning()
+    {
+        var dbName = TestDb.NewDbName();
+        var (orgId, sellerIds) = await SeedOrgWithSellersAsync(dbName, activeSellers: 3);
+
+        const int concurrentCalls = 30;
+        var tasks = Enumerable.Range(0, concurrentCalls).Select(async _ =>
+        {
+            await using var db = TestDb.Create(dbName, organizationId: orgId);
+            return await LeadAssignment.PickNextAssigneeAsync(db, orgId);
+        });
+
+        var results = await Task.WhenAll(tasks);
+
+        Assert.All(results, r => Assert.NotNull(r));
+
+        var counts = results
+            .GroupBy(r => r!.Value)
+            .ToDictionary(g => g.Key, g => g.Count());
+
+        Assert.Equal(sellerIds.Count, counts.Count); // los 3 vendedores recibieron al menos 1
+        Assert.Equal(concurrentCalls, counts.Values.Sum()); // ninguna asignación se perdió
+        Assert.True(counts.Values.Max() - counts.Values.Min() <= 1,
+            $"Reparto desbalanceado: {string.Join(", ", counts.Select(kv => $"{kv.Key}={kv.Value}"))}");
     }
 }

@@ -247,3 +247,44 @@ export async function sendTelegramAlert(prospectId: number): Promise<void> {
     throw new Error(response.data.message ?? 'No se pudo enviar la alerta a Telegram.');
   }
 }
+
+export interface ProspectDriveSyncStatus {
+  fileId: string;
+  driveUrl: string;
+  syncedAt: string;
+  prospectCount: number;
+}
+
+// Ya no descarga un .xlsx local: empuja la selección al mismo archivo de Drive que mantiene la
+// sincronización automática (ver ProspectDriveSyncService.SyncSelectionAsync en el backend).
+export async function exportProspectsToExcel(prospectIds: number[], messageTemplateIds: number[]): Promise<ProspectDriveSyncStatus> {
+  const response = await apiClient.post<ApiResponse<ProspectDriveSyncStatus>>('/prospects/export', {
+    prospectIds,
+    messageTemplateIds,
+  });
+  if (!response.data.success || !response.data.data) {
+    throw new Error(response.data.message ?? 'No se pudo sincronizar con Drive.');
+  }
+  return response.data.data;
+}
+
+// null = todavía no sincronizó nunca (GoogleDrive sin configurar, o el primer tick del
+// background service todavía no corrió) — ver ProspectDriveSyncService.GetStatusAsync.
+export async function getDriveSyncStatus(): Promise<ProspectDriveSyncStatus | null> {
+  const response = await apiClient.get<ApiResponse<ProspectDriveSyncStatus | null>>('/prospects/drive-sync-status');
+  if (!response.data.success) {
+    throw new Error(response.data.message ?? 'No se pudo obtener el estado de sincronización con Drive.');
+  }
+  return response.data.data ?? null;
+}
+
+// Fuerza ya mismo una sincronización completa (todos los prospectos activos) sin esperar el
+// próximo tick automático (cada 30 min) — útil para volver a dejar el archivo con el total
+// después de exportar una selección puntual.
+export async function syncDriveNow(): Promise<ProspectDriveSyncStatus> {
+  const response = await apiClient.post<ApiResponse<ProspectDriveSyncStatus>>('/prospects/drive-sync-now');
+  if (!response.data.success || !response.data.data) {
+    throw new Error(response.data.message ?? 'No se pudo sincronizar con Drive.');
+  }
+  return response.data.data;
+}

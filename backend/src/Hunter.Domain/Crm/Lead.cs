@@ -26,6 +26,10 @@ public class Lead
     public DateTimeOffset? LastActivityAt { get; set; }
     public DateTimeOffset? ClosedAt { get; set; }
 
+    // Último recordatorio de escalamiento mandado por StaleLeadEscalationBackgroundService: evita
+    // reenviar el mismo aviso en cada tick mientras el lead siga sin actividad.
+    public DateTimeOffset? LastEscalatedAt { get; set; }
+
     public ICollection<LeadActivity> Activities { get; set; } = new List<LeadActivity>();
     public ICollection<FollowUp> FollowUps { get; set; } = new List<FollowUp>();
 }

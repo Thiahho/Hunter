@@ -7,6 +7,7 @@ using Hunter.Domain.Organizations;
 using Hunter.Domain.Prospecting;
 using Hunter.Domain.Sales;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.ChangeTracking;
 
 namespace Hunter.Application.Common;
 
@@ -39,9 +40,15 @@ public interface IHunterDbContext
     DbSet<Lead> Leads { get; }
     DbSet<LeadActivity> LeadActivities { get; }
     DbSet<FollowUp> FollowUps { get; }
+    DbSet<LeadAssignmentCursor> LeadAssignmentCursors { get; }
     DbSet<Sale> Sales { get; }
 
     DbSet<Cost> Costs { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
+
+    // Necesario para LeadAssignment.ClaimNextIndexAsync: tras un choque de concurrencia
+    // optimista, hay que soltar la entidad tracked-y-sucia del ChangeTracker antes de reintentar
+    // con una lectura fresca (DbContext.Entry ya lo resuelve, solo hace falta exponerlo acá).
+    EntityEntry<TEntity> Entry<TEntity>(TEntity entity) where TEntity : class;
 }

@@ -190,13 +190,56 @@ public class CampaignService(
         if (await IsKillSwitchEnabledAsync(ct))
             return Result<ProcessQueueResultDto>.Failure("El Kill Switch está activo: no se pueden enviar mensajes.");
 
+        // MaxMessages/MessagesPerHour/MessagesPerDay se guardaban en el modelo desde el principio
+        // pero nada los hacía cumplir: una campaña seguía mandando mientras hubiera destinatarios
+        // Pending, sin importar la config (auditoria.md, hallazgo Alto #2). Solo cuentan los envíos
+        // Sent de ESTA campaña — un Failed no le costó nada a Meta, no debe consumir presupuesto.
+        var now = DateTimeOffset.UtcNow;
+        var totalSent = await db.Messages.CountAsync(m => m.CampaignId == campaignId && m.Status == MessageStatus.Sent, ct);
+
+        if (totalSent >= campaign.MaxMessages)
+        {
+            campaign.Status = CampaignStatus.Completed;
+            campaign.EndDate = now;
+            campaign.UpdatedAt = now;
+            await db.SaveChangesAsync(ct);
+            return Result<ProcessQueueResultDto>.Failure(
+                $"La campaña alcanzó su tope de {campaign.MaxMessages} mensajes y se marcó como completada.");
+        }
+
+        var sentLastHour = await db.Messages.CountAsync(
+            m => m.CampaignId == campaignId && m.Status == MessageStatus.Sent && m.SentAt >= now.AddHours(-1), ct);
+        var sentLastDay = await db.Messages.CountAsync(
+            m => m.CampaignId == campaignId && m.Status == MessageStatus.Sent && m.SentAt >= now.AddDays(-1), ct);
+
+        var remainingByHour = campaign.MessagesPerHour - sentLastHour;
+        var remainingByDay = campaign.MessagesPerDay - sentLastDay;
+
+        if (remainingByHour <= 0 || remainingByDay <= 0)
+        {
+            // A diferencia de MaxMessages (tope definitivo de la campaña), esto es un límite de
+            // ritmo que se libera solo con el paso del tiempo: se pausa (no se completa) para que
+            // alguien decida conscientemente reanudarla, en vez de reintentar en cada tick sin
+            // que nadie se entere de que está frenada.
+            campaign.Status = CampaignStatus.Paused;
+            campaign.UpdatedAt = now;
+            await db.SaveChangesAsync(ct);
+            var reason = remainingByDay <= 0
+                ? $"tope diario de {campaign.MessagesPerDay} mensajes"
+                : $"tope por hora de {campaign.MessagesPerHour} mensajes";
+            return Result<ProcessQueueResultDto>.Failure(
+                $"La campaña alcanzó el {reason} y se pausó automáticamente. Se puede reanudar más tarde.");
+        }
+
+        var effectiveBatchSize = new[] { batchSize, campaign.MaxMessages - totalSent, remainingByHour, remainingByDay }.Min();
+
         var contactChannel = MapChannel(campaign.Channel);
 
         var recipients = await db.CampaignRecipients
             .Include(r => r.Prospect).ThenInclude(p => p.Contacts)
             .Where(r => r.CampaignId == campaignId &&
                         (r.Status == CampaignRecipientStatus.Pending || r.Status == CampaignRecipientStatus.Queued))
-            .Take(batchSize)
+            .Take(effectiveBatchSize)
             .ToListAsync(ct);
 
         var sent = 0;

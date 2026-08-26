@@ -20,9 +20,10 @@ public class ScheduledProspectAutomationService(
     private const int MinRadiusKm = 1;
     private const int MaxRadiusKm = 50;
 
-    // Entre lotes de envío del drain loop de RunAsync: mismo espaciado que usa
-    // CampaignQueueBackgroundService entre ticks, para no violar MessagesPerMinute de la campaña.
-    private static readonly TimeSpan DelayBetweenSendBatches = TimeSpan.FromSeconds(60);
+    // Mismos topes que ImportService.MaxApifyLocalities/MaxApifyKeywords (duplicados acá igual
+    // que MaxLocalities/MinRadiusKm/MaxRadiusKm ya duplican los de OSM — ver ImportService.cs).
+    private const int MaxApifyLocalities = 5;
+    private const int MaxApifyKeywords = 5;
 
     public async Task<Result<ScheduledProspectAutomationDto>> CreateAsync(ScheduleProspectAutomationRequest request, CancellationToken ct = default)
     {
@@ -35,28 +36,40 @@ public class ScheduledProspectAutomationService(
 
         if (localities.Count == 0)
             return Result<ScheduledProspectAutomationDto>.Failure("Debe indicar al menos una zona o localidad.");
-        if (localities.Count > MaxLocalities)
-            return Result<ScheduledProspectAutomationDto>.Failure($"Máximo {MaxLocalities} localidades por automatización.");
-
-        // RadiusKm solo aplica a OpenStreetMap (geocodifica y busca alrededor); Apify busca
-        // "{rubro} en {localidad}, Argentina" directo contra Google Maps, sin radio.
-        if (request.Source == ProspectAutomationSource.OpenStreetMap
-            && (request.RadiusKm < MinRadiusKm || request.RadiusKm > MaxRadiusKm))
-            return Result<ScheduledProspectAutomationDto>.Failure($"El radio debe estar entre {MinRadiusKm} y {MaxRadiusKm} km.");
-
-        var keywords = (request.Keywords ?? [])
-            .Select(k => k?.Trim())
-            .Where(k => !string.IsNullOrWhiteSpace(k))
-            .Select(k => k!)
-            .Distinct()
-            .ToList();
-
-        // Igual que ImportFromApifyAsync: Apify no tiene categorías cerradas, solo texto libre.
-        if (request.Source == ProspectAutomationSource.Apify && keywords.Count == 0)
-            return Result<ScheduledProspectAutomationDto>.Failure("Debe indicar al menos un rubro a buscar.");
 
         if (request.ScheduledAt <= DateTimeOffset.UtcNow)
             return Result<ScheduledProspectAutomationDto>.Failure("La fecha y hora programada debe ser en el futuro.");
+
+        object criteria;
+        if (request.Source == ProspectAutomationSource.Apify)
+        {
+            if (localities.Count > MaxApifyLocalities)
+                return Result<ScheduledProspectAutomationDto>.Failure($"Máximo {MaxApifyLocalities} localidades por automatización.");
+
+            var keywords = (request.Keywords ?? [])
+                .Select(k => k?.Trim())
+                .Where(k => !string.IsNullOrWhiteSpace(k))
+                .Select(k => k!)
+                .Distinct()
+                .ToList();
+
+            if (keywords.Count == 0)
+                return Result<ScheduledProspectAutomationDto>.Failure("Debe indicar al menos un rubro para Apify.");
+            if (keywords.Count > MaxApifyKeywords)
+                return Result<ScheduledProspectAutomationDto>.Failure($"Máximo {MaxApifyKeywords} rubros por automatización.");
+
+            criteria = new ApifyImportRequest(localities, keywords, request.MaxResults);
+        }
+        else
+        {
+            if (localities.Count > MaxLocalities)
+                return Result<ScheduledProspectAutomationDto>.Failure($"Máximo {MaxLocalities} localidades por automatización.");
+
+            if (request.RadiusKm < MinRadiusKm || request.RadiusKm > MaxRadiusKm)
+                return Result<ScheduledProspectAutomationDto>.Failure($"El radio debe estar entre {MinRadiusKm} y {MaxRadiusKm} km.");
+
+            criteria = new OpenStreetMapImportRequest(localities, request.Categories, request.RadiusKm, request.MaxResults, request.Keywords);
+        }
 
         var organizationId = currentUser.OrganizationId!.Value;
 
@@ -64,16 +77,15 @@ public class ScheduledProspectAutomationService(
         if (!campaignIdResult.Succeeded)
             return Result<ScheduledProspectAutomationDto>.Failure(campaignIdResult.Error!);
 
-        var searchCriteriaJson = request.Source == ProspectAutomationSource.Apify
-            ? JsonSerializer.Serialize(new ApifyImportRequest(localities, keywords, request.MaxResults))
-            : JsonSerializer.Serialize(new OpenStreetMapImportRequest(localities, request.Categories, request.RadiusKm, request.MaxResults, request.Keywords));
-
         var automation = new ScheduledProspectAutomation
         {
             OrganizationId = organizationId,
             CreatedByUserId = currentUser.UserId!.Value,
-            SearchCriteriaJson = searchCriteriaJson,
             Source = request.Source,
+            // criteria está tipado object acá (OpenStreetMapImportRequest o ApifyImportRequest
+            // según Source): Serialize(criteria) con TValue inferido de "object" serializaría "{}"
+            // por tipo estático, no por tipo real — hace falta pasar el Type explícito.
+            SearchCriteriaJson = JsonSerializer.Serialize(criteria, criteria.GetType()),
             CampaignId = campaignIdResult.Value,
             ScheduledAt = request.ScheduledAt,
             Status = ScheduledAutomationStatus.Pending
@@ -128,16 +140,17 @@ public class ScheduledProspectAutomationService(
 
         try
         {
-            var searchResult = automation.Source == ProspectAutomationSource.Apify
-                ? await importService.ImportFromApifyAsync(
+            var searchResult = automation.Source switch
+            {
+                ProspectAutomationSource.Apify => await importService.ImportFromApifyAsync(
                     JsonSerializer.Deserialize<ApifyImportRequest>(automation.SearchCriteriaJson)
                         ?? throw new InvalidOperationException("SearchCriteriaJson corrupto o vacío."),
-                    ct)
-                : await importService.ImportFromOpenStreetMapAsync(
+                    ct),
+                _ => await importService.ImportFromOpenStreetMapAsync(
                     JsonSerializer.Deserialize<OpenStreetMapImportRequest>(automation.SearchCriteriaJson)
                         ?? throw new InvalidOperationException("SearchCriteriaJson corrupto o vacío."),
-                    ct);
-
+                    ct)
+            };
             if (!searchResult.Succeeded)
             {
                 await FailAsync(automation, $"Búsqueda sin resultados: {searchResult.Error}", ct);
@@ -199,63 +212,22 @@ public class ScheduledProspectAutomationService(
                 }
             }
 
-            // StartAsync falla si la campaña ya está Running (ej. otra automatización la arrancó
-            // antes) — no es un error real acá, solo significa que ya estaba en marcha.
-            var startResult = await campaignService.StartAsync(automation.CampaignId, ct);
-            var startNote = startResult.Succeeded
-                ? "Campaña iniciada."
-                : $"Campaña no se pudo iniciar automáticamente ({startResult.Error}).";
-
-            var (sent, failed, suppressed) = await DrainSendQueueAsync(automation.CampaignId, ct);
-
+            // El envío automático quedó deshabilitado (ver auditoria.md / decisión del equipo):
+            // la automatización solo importa y suma prospectos a la campaña "de sistema", el
+            // contacto real se hace a mano exportando a Excel (ver ProspectExportService) y
+            // abriendo el link de wa.me correspondiente. La campaña queda en Draft/Ready, sin
+            // arrancar, para no depender de una migración si en algún momento se retoma el envío
+            // automático.
             automation.Status = ScheduledAutomationStatus.Completed;
             automation.ResultSummary =
-                $"Importados {confirmResult.Value!.Created} prospectos, {addResult.Value!.Added} sumados a la campaña. {startNote} " +
-                $"Envío: {sent} enviados, {failed} fallidos, {suppressed} suprimidos.";
+                $"Importados {confirmResult.Value!.Created} prospectos, {addResult.Value!.Added} sumados a la campaña " +
+                "(sin enviar: el contacto ahora se hace exportando a Excel).";
             await db.SaveChangesAsync(ct);
         }
         catch (Exception ex)
         {
             await FailAsync(automation, $"Error inesperado: {ex.Message}", ct);
         }
-    }
-
-    // Vacía la cola de la campaña respetando MessagesPerMinute (mismo mecanismo que
-    // CampaignQueueBackgroundService, pero corrido acá mismo en vez de depender de que ese
-    // servicio esté habilitado — CampaignQueue:Enabled es false por defecto, y esta
-    // automatización tiene que poder mandar los mensajes sin que alguien prenda ese flag aparte).
-    private async Task<(int Sent, int Failed, int Suppressed)> DrainSendQueueAsync(int campaignId, CancellationToken ct)
-    {
-        var messagesPerMinute = await db.Campaigns
-            .Where(c => c.Id == campaignId)
-            .Select(c => c.MessagesPerMinute)
-            .FirstOrDefaultAsync(ct);
-
-        var batchSize = Math.Max(1, messagesPerMinute);
-        var totalSent = 0;
-        var totalFailed = 0;
-        var totalSuppressed = 0;
-
-        // Tope defensivo: MaxResults de la búsqueda ya está acotado a 300 (OpenStreetMapClient),
-        // así que esto nunca debería alcanzarse — es solo para que un bug no deje el loop girando
-        // para siempre.
-        for (var iteration = 0; iteration < 500; iteration++)
-        {
-            var result = await campaignService.ProcessQueueAsync(campaignId, batchSize, ct);
-            if (!result.Succeeded || result.Value!.Processed == 0)
-                break;
-
-            totalSent += result.Value.Sent;
-            totalFailed += result.Value.Failed;
-            totalSuppressed += result.Value.Suppressed;
-
-            if (result.Value.Processed < batchSize)
-                break;
-
-            await Task.Delay(DelayBetweenSendBatches, ct);
-        }
-
-        return (totalSent, totalFailed, totalSuppressed);
     }
 
     private async Task FailAsync(ScheduledProspectAutomation automation, string reason, CancellationToken ct)
@@ -322,35 +294,37 @@ public class ScheduledProspectAutomationService(
             .Select(c => c.Name)
             .FirstOrDefaultAsync(ct) ?? "(campaña eliminada)";
 
-        IReadOnlyCollection<string> resultLocalities;
-        IReadOnlyCollection<ProspectCategory>? resultCategories = null;
-        int resultRadiusKm = 0;
-        int resultMaxResults;
-        IReadOnlyCollection<string>? resultKeywords;
+        IReadOnlyCollection<string> localities;
+        IReadOnlyCollection<ProspectCategory>? categories;
+        int radiusKm;
+        int maxResults;
+        IReadOnlyCollection<string>? keywords;
 
         if (automation.Source == ProspectAutomationSource.Apify)
         {
             var criteria = JsonSerializer.Deserialize<ApifyImportRequest>(automation.SearchCriteriaJson);
-            resultLocalities = criteria?.Localities ?? [];
-            resultMaxResults = criteria?.MaxResults ?? 0;
-            resultKeywords = criteria?.Keywords;
+            localities = criteria?.Localities ?? [];
+            categories = null;
+            radiusKm = 0;
+            maxResults = criteria?.MaxResults ?? 0;
+            keywords = criteria?.Keywords;
         }
         else
         {
             var criteria = JsonSerializer.Deserialize<OpenStreetMapImportRequest>(automation.SearchCriteriaJson);
-            resultLocalities = criteria?.Localities ?? [];
-            resultCategories = criteria?.Categories;
-            resultRadiusKm = criteria?.RadiusKm ?? 0;
-            resultMaxResults = criteria?.MaxResults ?? 0;
-            resultKeywords = criteria?.Keywords;
+            localities = criteria?.Localities ?? [];
+            categories = criteria?.Categories;
+            radiusKm = criteria?.RadiusKm ?? 0;
+            maxResults = criteria?.MaxResults ?? 0;
+            keywords = criteria?.Keywords;
         }
 
         return new ScheduledProspectAutomationDto(
             automation.Id,
-            resultLocalities,
-            resultCategories,
-            resultRadiusKm,
-            resultMaxResults,
+            localities,
+            categories,
+            radiusKm,
+            maxResults,
             automation.CampaignId,
             campaignName,
             automation.ScheduledAt,
@@ -358,7 +332,7 @@ public class ScheduledProspectAutomationService(
             automation.RunAt,
             automation.ResultSummary,
             automation.CreatedAt,
-            resultKeywords,
+            keywords,
             automation.Source);
     }
 }

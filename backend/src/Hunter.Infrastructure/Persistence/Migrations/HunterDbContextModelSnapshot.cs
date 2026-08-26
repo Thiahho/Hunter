@@ -593,6 +593,10 @@ namespace Hunter.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(1000)")
                         .HasColumnName("notes");
 
+                    b.Property<int>("OrganizationId")
+                        .HasColumnType("integer")
+                        .HasColumnName("organization_id");
+
                     b.Property<DateTimeOffset>("ScheduledAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("scheduled_at");
@@ -615,6 +619,9 @@ namespace Hunter.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("ScheduledAt")
                         .HasDatabaseName("ix_follow_ups_scheduled_at");
+
+                    b.HasIndex("OrganizationId", "LeadId")
+                        .HasDatabaseName("ix_follow_ups_organization_id_lead_id");
 
                     b.ToTable("follow_ups", (string)null);
                 });
@@ -651,6 +658,10 @@ namespace Hunter.Infrastructure.Persistence.Migrations
                     b.Property<DateTimeOffset?>("LastActivityAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("last_activity_at");
+
+                    b.Property<DateTimeOffset?>("LastEscalatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_escalated_at");
 
                     b.Property<string>("LostReason")
                         .HasMaxLength(30)
@@ -718,6 +729,10 @@ namespace Hunter.Infrastructure.Persistence.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("lead_id");
 
+                    b.Property<int>("OrganizationId")
+                        .HasColumnType("integer")
+                        .HasColumnName("organization_id");
+
                     b.Property<string>("Type")
                         .IsRequired()
                         .HasMaxLength(20)
@@ -734,7 +749,47 @@ namespace Hunter.Infrastructure.Persistence.Migrations
                     b.HasIndex("LeadId")
                         .HasDatabaseName("ix_lead_activities_lead_id");
 
+                    b.HasIndex("OrganizationId", "LeadId")
+                        .HasDatabaseName("ix_lead_activities_organization_id_lead_id");
+
                     b.ToTable("lead_activities", (string)null);
+                });
+
+            modelBuilder.Entity("Hunter.Domain.Crm.LeadAssignmentCursor", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Area")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("area");
+
+                    b.Property<int>("NextIndex")
+                        .HasColumnType("integer")
+                        .HasColumnName("next_index");
+
+                    b.Property<int>("OrganizationId")
+                        .HasColumnType("integer")
+                        .HasColumnName("organization_id");
+
+                    b.Property<int>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("integer")
+                        .HasColumnName("version");
+
+                    b.HasKey("Id")
+                        .HasName("pk_lead_assignment_cursors");
+
+                    b.HasIndex("OrganizationId", "Area")
+                        .IsUnique()
+                        .HasDatabaseName("ix_lead_assignment_cursors_organization_id_area");
+
+                    b.ToTable("lead_assignment_cursors", (string)null);
                 });
 
             modelBuilder.Entity("Hunter.Domain.Finance.Cost", b =>
@@ -1591,8 +1646,10 @@ namespace Hunter.Infrastructure.Persistence.Migrations
                         .HasColumnType("jsonb")
                         .HasColumnName("search_criteria_json");
 
-                    b.Property<int>("Source")
-                        .HasColumnType("integer")
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
                         .HasColumnName("source");
 
                     b.Property<string>("Status")

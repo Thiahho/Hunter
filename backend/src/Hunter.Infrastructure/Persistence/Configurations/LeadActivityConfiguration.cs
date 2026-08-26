@@ -15,6 +15,6 @@ public class LeadActivityConfiguration : IEntityTypeConfiguration<LeadActivity>
         builder.Property(x => x.Type).HasConversion<string>().HasMaxLength(20);
         builder.Property(x => x.Description).IsRequired();
 
-        builder.HasIndex(x => x.LeadId);
+        builder.HasIndex(x => new { x.OrganizationId, x.LeadId });
     }
 }

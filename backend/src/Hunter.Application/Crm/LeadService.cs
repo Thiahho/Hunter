@@ -10,6 +10,13 @@ namespace Hunter.Application.Crm;
 
 public class LeadService(IHunterDbContext db, ICurrentUserService currentUser) : ILeadService
 {
+    // Sin tope, LeadActivity.Description quedaba con un text de Postgres sin límite práctico
+    // (auditoria.md, hallazgo Bajo). 900 caracteres = el largo del mensaje de campaña más largo
+    // que manda Difrani hoy (presentación institucional completa); una nota de actividad no
+    // debería necesitar más que eso.
+    private const int MaxDescriptionLength = 900;
+
+
     public async Task<PagedResult<LeadListItemDto>> SearchAsync(LeadQuery query, CancellationToken ct = default)
     {
         var page = query.Page < 1 ? 1 : query.Page;
@@ -40,6 +47,7 @@ public class LeadService(IHunterDbContext db, ICurrentUserService currentUser) :
                 l.Priority,
                 l.AssignedToUserId,
                 l.CreatedAt,
+                l.LastActivityAt,
                 l.Prospect.Address,
                 l.Prospect.City,
                 l.Prospect.Province,
@@ -63,6 +71,17 @@ public class LeadService(IHunterDbContext db, ICurrentUserService currentUser) :
         var lead = await db.Leads.FirstOrDefaultAsync(l => l.Id == id, ct);
         if (lead is null)
             return Result<bool>.Failure("Lead no encontrado.");
+
+        if (request.UserId is not null)
+        {
+            // Sin este chequeo, un UserId inexistente o de otra organización (el filtro global de
+            // User ya lo descarta, pero un Id inactivo o directamente inventado no) queda asignado
+            // igual: el lead pasa a "asignado" pero nadie lo ve ni lo va a atender nunca
+            // (auditoria.md, hallazgo Alto #3).
+            var assigneeExists = await db.Users.AnyAsync(u => u.Id == request.UserId && u.IsActive, ct);
+            if (!assigneeExists)
+                return Result<bool>.Failure("El usuario indicado no existe o no está activo en esta organización.");
+        }
 
         lead.AssignedToUserId = request.UserId ?? await LeadAssignment.PickNextAssigneeAsync(db, currentUser.OrganizationId!.Value, ct);
         lead.UpdatedAt = DateTimeOffset.UtcNow;
@@ -94,8 +113,12 @@ public class LeadService(IHunterDbContext db, ICurrentUserService currentUser) :
         if (lead is null)
             return Result<LeadActivityDto>.Failure("Lead no encontrado.");
 
+        if (request.Description.Length > MaxDescriptionLength)
+            return Result<LeadActivityDto>.Failure($"La descripción no puede superar los {MaxDescriptionLength} caracteres.");
+
         var activity = new LeadActivity
         {
+            OrganizationId = currentUser.OrganizationId!.Value,
             LeadId = lead.Id,
             UserId = currentUser.UserId!.Value,
             Type = request.Type,
@@ -117,8 +140,12 @@ public class LeadService(IHunterDbContext db, ICurrentUserService currentUser) :
         if (lead is null)
             return Result<FollowUpDto>.Failure("Lead no encontrado.");
 
+        if (request.ScheduledAt < DateTimeOffset.UtcNow)
+            return Result<FollowUpDto>.Failure("La fecha del seguimiento no puede ser en el pasado.");
+
         var followUp = new FollowUp
         {
+            OrganizationId = currentUser.OrganizationId!.Value,
             LeadId = lead.Id,
             UserId = currentUser.UserId!.Value,
             ScheduledAt = request.ScheduledAt,
@@ -153,6 +180,17 @@ public class LeadService(IHunterDbContext db, ICurrentUserService currentUser) :
         if (lead.Status is LeadStatus.Won or LeadStatus.Lost)
             return Result<bool>.Failure($"El lead ya está en estado {lead.Status}.");
 
+        if (request.Amount <= 0)
+            return Result<bool>.Failure("El monto de la venta debe ser mayor a cero.");
+
+        if (string.IsNullOrWhiteSpace(request.Currency) || request.Currency.Trim().Length != 3)
+            return Result<bool>.Failure("La moneda debe ser un código de 3 letras (ej. ARS, USD).");
+
+        if (request.Margin is < 0)
+            return Result<bool>.Failure("El margen no puede ser negativo.");
+        if (request.Margin > request.Amount)
+            return Result<bool>.Failure("El margen no puede ser mayor al monto de la venta.");
+
         var prospect = await db.Prospects.FirstOrDefaultAsync(p => p.Id == lead.ProspectId, ct);
         if (prospect is null)
             return Result<bool>.Failure("Prospecto no encontrado.");
@@ -171,7 +209,7 @@ public class LeadService(IHunterDbContext db, ICurrentUserService currentUser) :
             ProspectId = lead.ProspectId,
             SellerId = currentUser.UserId!.Value,
             Amount = request.Amount,
-            Currency = request.Currency,
+            Currency = request.Currency.Trim().ToUpperInvariant(),
             Margin = request.Margin,
             ProductCategory = request.ProductCategory,
             Status = SaleStatus.Won
@@ -190,6 +228,9 @@ public class LeadService(IHunterDbContext db, ICurrentUserService currentUser) :
         if (lead.Status is LeadStatus.Won or LeadStatus.Lost)
             return Result<bool>.Failure($"El lead ya está en estado {lead.Status}.");
 
+        if (request.Notes?.Length > MaxDescriptionLength)
+            return Result<bool>.Failure($"Las notas no pueden superar los {MaxDescriptionLength} caracteres.");
+
         lead.Status = LeadStatus.Lost;
         lead.LostReason = request.LostReason;
         lead.ClosedAt = DateTimeOffset.UtcNow;
@@ -199,6 +240,7 @@ public class LeadService(IHunterDbContext db, ICurrentUserService currentUser) :
         {
             db.LeadActivities.Add(new LeadActivity
             {
+                OrganizationId = currentUser.OrganizationId!.Value,
                 LeadId = lead.Id,
                 UserId = currentUser.UserId!.Value,
                 Type = Domain.Crm.LeadActivityType.Note,

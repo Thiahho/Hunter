@@ -1,9 +1,18 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router';
-import { deleteProspect, searchProspects, type ProspectCategory, type ProspectListItem, type ProspectStatus } from '../../api/prospects';
+import {
+  deleteProspect,
+  getDriveSyncStatus,
+  searchProspects,
+  syncDriveNow,
+  type ProspectCategory,
+  type ProspectListItem,
+  type ProspectStatus,
+} from '../../api/prospects';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { BulkSendMessageDialog } from './BulkSendMessageDialog';
+import { ExportProspectsDialog } from './ExportProspectsDialog';
 
 function buildMapsLink(prospect: ProspectListItem): string | null {
   // typeof en vez de "!== null": si el backend todavía no manda estos campos (build vieja,
@@ -115,6 +124,7 @@ export function ProspectsListPage() {
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [pendingDeletion, setPendingDeletion] = useState<PendingDeletion | null>(null);
   const [showBulkSend, setShowBulkSend] = useState(false);
+  const [showExport, setShowExport] = useState(false);
 
   const { data, isLoading, isError, error } = useQuery({
     queryKey: ['prospects', { search, category, status, createdWithinDays, page }],
@@ -169,6 +179,12 @@ export function ProspectsListPage() {
 
   const allOnPageSelected = !!data && data.items.length > 0 && data.items.every((p) => selectedIds.has(p.id));
 
+  const driveSyncQuery = useQuery({ queryKey: ['prospects-drive-sync-status'], queryFn: getDriveSyncStatus });
+  const driveSyncNowMutation = useMutation({
+    mutationFn: syncDriveNow,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['prospects-drive-sync-status'] }),
+  });
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -180,6 +196,38 @@ export function ProspectsListPage() {
           Nuevo prospecto
         </Link>
       </div>
+
+      {driveSyncQuery.data && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 px-3 py-2 text-xs text-slate-600 dark:text-slate-300">
+          <span>
+            📄{' '}
+            <a
+              href={driveSyncQuery.data.driveUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="font-medium text-indigo-600 dark:text-indigo-400 hover:underline"
+            >
+              Ver Excel actualizado en Drive
+            </a>{' '}
+            · {driveSyncQuery.data.prospectCount} prospectos · última sincronización{' '}
+            {formatAddedAt(driveSyncQuery.data.syncedAt).toLowerCase()}
+          </span>
+          <button
+            type="button"
+            onClick={() => driveSyncNowMutation.mutate()}
+            disabled={driveSyncNowMutation.isPending}
+            title="Vuelve a subir TODOS los prospectos activos al archivo compartido, sin esperar la sincronización automática cada 30 min"
+            className="shrink-0 font-medium text-indigo-600 dark:text-indigo-400 hover:underline disabled:opacity-60"
+          >
+            {driveSyncNowMutation.isPending ? 'Sincronizando…' : 'Sincronizar todos ahora'}
+          </button>
+        </div>
+      )}
+      {driveSyncNowMutation.isError && (
+        <p className="text-xs text-red-600 dark:text-red-400">
+          {driveSyncNowMutation.error instanceof Error ? driveSyncNowMutation.error.message : 'No se pudo sincronizar con Drive.'}
+        </p>
+      )}
 
       <div className="flex flex-wrap gap-3">
         <input
@@ -258,6 +306,13 @@ export function ProspectsListPage() {
                   className="rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-500"
                 >
                   Enviar mensaje
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowExport(true)}
+                  className="rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-500"
+                >
+                  Exportar a Excel
                 </button>
                 <button
                   type="button"
@@ -431,6 +486,14 @@ export function ProspectsListPage() {
             setSelectedIds(new Set());
             queryClient.invalidateQueries({ queryKey: ['prospects'] });
           }}
+        />
+      )}
+
+      {showExport && (
+        <ExportProspectsDialog
+          prospectIds={[...selectedIds]}
+          onClose={() => setShowExport(false)}
+          onSynced={() => queryClient.invalidateQueries({ queryKey: ['prospects-drive-sync-status'] })}
         />
       )}
     </div>

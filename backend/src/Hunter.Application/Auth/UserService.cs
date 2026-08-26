@@ -31,6 +31,13 @@ public class UserService(IHunterDbContext db, IPasswordHasher passwordHasher, IC
 
     public async Task<Result<UserDto>> CreateAsync(int organizationId, CreateUserRequest request, CancellationToken ct = default)
     {
+        // Un Admin podía crear otros Admin (mismo nivel de acceso que el suyo): si esa cuenta se
+        // compromete, el atacante se multiplica pares con su mismo poder en vez de quedar
+        // contenido. Crear un Admin ahora queda reservado al Owner (auditoria.md, hallazgo Info).
+        if (string.Equals(request.Role.Trim(), RoleNames.Admin, StringComparison.OrdinalIgnoreCase)
+            && !currentUser.Roles.Contains(RoleNames.Owner))
+            return Result<UserDto>.Failure("Solo el Owner puede crear usuarios con rol Admin.");
+
         var validationError = await ValidateAsync(organizationId, request, ct);
         if (validationError is not null)
             return Result<UserDto>.Failure(validationError);

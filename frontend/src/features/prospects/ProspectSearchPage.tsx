@@ -13,6 +13,7 @@ import {
 } from '../../api/imports';
 import {
   cancelProspectAutomation,
+  createDailyProspectingPlan,
   createProspectAutomation,
   listProspectAutomations,
   type ScheduledAutomationStatus,
@@ -254,6 +255,59 @@ export function ProspectSearchPage() {
     mutationFn: cancelProspectAutomation,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['prospect-automations'] }),
   });
+
+  // Estado propio (no comparte "localities" con la búsqueda/automatización de arriba): acá el
+  // pool no tiene el tope de 5, el backend lo reparte en chunks de a 5 por corrida — ver
+  // DailyProspectingPlanService.
+  const [planLocalityInput, setPlanLocalityInput] = useState('');
+  const [planLocalities, setPlanLocalities] = useState<string[]>([]);
+  const [planStartAtInput, setPlanStartAtInput] = useState('');
+  const [planIntervalMinutes, setPlanIntervalMinutes] = useState(20);
+  const [planIncludeApify, setPlanIncludeApify] = useState(true);
+  const [planResult, setPlanResult] = useState<{ automations: number; estimatedCeiling: number } | null>(null);
+
+  function addPlanLocality() {
+    const value = planLocalityInput.trim();
+    if (!value) return;
+    setPlanLocalities((prev) => (prev.includes(value) ? prev : [...prev, value]));
+    setPlanLocalityInput('');
+  }
+
+  function removePlanLocality(locality: string) {
+    setPlanLocalities((prev) => prev.filter((l) => l !== locality));
+  }
+
+  const planOsmBatches = Math.ceil(planLocalities.length / 5);
+  const planApifyBatches = planIncludeApify ? Math.ceil(planLocalities.length / 5) : 0;
+  const planEstimatedCeiling = planOsmBatches * 300 + planApifyBatches * 100;
+  const planTotalBatches = planOsmBatches + planApifyBatches;
+  const planEndsAt =
+    planTotalBatches > 0 && planStartAtInput
+      ? new Date(new Date(planStartAtInput).getTime() + (planTotalBatches - 1) * planIntervalMinutes * 60_000)
+      : null;
+
+  const dailyPlanMutation = useMutation({
+    mutationFn: () =>
+      createDailyProspectingPlan({
+        localities: planLocalities,
+        startAt: new Date(planStartAtInput).toISOString(),
+        intervalMinutes: planIntervalMinutes,
+        radiusKm,
+        includeApify: planIncludeApify,
+      }),
+    onSuccess: (dto) => {
+      setPlanResult({ automations: dto.automations.length, estimatedCeiling: dto.estimatedCeiling });
+      setPlanLocalities([]);
+      queryClient.invalidateQueries({ queryKey: ['prospect-automations'] });
+    },
+  });
+
+  function handleCreateDailyPlan(event: FormEvent) {
+    event.preventDefault();
+    if (planLocalities.length === 0 || !planStartAtInput) return;
+    setPlanResult(null);
+    dailyPlanMutation.mutate();
+  }
 
   function addScheduleTime() {
     if (!scheduleAtInput) return;
@@ -723,9 +777,10 @@ export function ProspectSearchPage() {
           <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Programar automatización</h3>
           <p className="text-xs text-slate-500 dark:text-slate-400">
             Agregá una o varias fechas/horarios: en cada uno, el sistema busca los prospectos con el rubro y zonas de
-            arriba, los guarda automáticamente y les manda la plantilla de WhatsApp de la organización sin revisión
-            manual — no hace falta armar una campaña a mano. Siempre busca por OpenStreetMap (gratis) — el selector
-            de fuente de arriba solo aplica a la búsqueda manual.
+            arriba y los guarda automáticamente (no envía nada — el contacto se hace después a mano, exportando a
+            Excel desde el listado de prospectos). Siempre busca por OpenStreetMap (gratis) — el selector de fuente
+            de arriba solo aplica a la búsqueda manual. Para repartir muchas localidades en varias corridas a lo
+            largo del día combinando OpenStreetMap y Apify, usá "Plan diario" más abajo.
           </p>
         </div>
 
@@ -806,6 +861,7 @@ export function ProspectSearchPage() {
             <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-800 text-sm">
               <thead className="bg-slate-50 dark:bg-slate-900">
                 <tr>
+                  <th className="px-3 py-2 text-left font-medium text-slate-500 dark:text-slate-400">Fuente</th>
                   <th className="px-3 py-2 text-left font-medium text-slate-500 dark:text-slate-400">Zonas</th>
                   <th className="px-3 py-2 text-left font-medium text-slate-500 dark:text-slate-400">Campaña</th>
                   <th className="px-3 py-2 text-left font-medium text-slate-500 dark:text-slate-400">Programada</th>
@@ -817,6 +873,9 @@ export function ProspectSearchPage() {
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800 bg-white dark:bg-slate-950">
                 {automationsQuery.data.map((automation) => (
                   <tr key={automation.id}>
+                    <td className="px-3 py-2 text-slate-600 dark:text-slate-300">
+                      {automation.source === 'Apify' ? 'Apify' : 'OSM'}
+                    </td>
                     <td className="px-3 py-2 text-slate-600 dark:text-slate-300">{automation.localities.join(', ')}</td>
                     <td className="px-3 py-2 text-slate-600 dark:text-slate-300">{automation.campaignName}</td>
                     <td className="px-3 py-2 text-slate-600 dark:text-slate-300">
@@ -850,6 +909,126 @@ export function ProspectSearchPage() {
             </table>
           </div>
         )}
+      </div>
+
+      <div className="space-y-4 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5">
+        <div>
+          <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Plan diario</h3>
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            Cargá muchas localidades (sin el límite de 5) y el sistema las reparte solo en varias corridas
+            escalonadas a lo largo del día, combinando OpenStreetMap y Apify, con el mismo rubro fijo de siempre
+            (Casa de repuestos + Mayorista). No hay forma de garantizar un número exacto de contactos: el techo de
+            abajo es antes de descartar duplicados de corridas anteriores.
+          </p>
+        </div>
+
+        <form onSubmit={handleCreateDailyPlan} className="space-y-3">
+          <div>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Localidades</label>
+            <div className="mt-1 flex gap-2">
+              <input
+                type="text"
+                value={planLocalityInput}
+                onChange={(e) => setPlanLocalityInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    addPlanLocality();
+                  }
+                }}
+                placeholder="ej. Moreno"
+                className={inputClass}
+              />
+              <button
+                type="button"
+                onClick={addPlanLocality}
+                className="mt-1 shrink-0 rounded-md border border-slate-300 dark:border-slate-700 px-3 py-2 text-sm font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+              >
+                Agregar
+              </button>
+            </div>
+            {planLocalities.length > 0 && (
+              <div className="mt-2 flex flex-wrap gap-2">
+                {planLocalities.map((locality) => (
+                  <span
+                    key={locality}
+                    className="flex items-center gap-1 rounded-full bg-indigo-50 dark:bg-indigo-500/10 px-3 py-1 text-xs font-medium text-indigo-700 dark:text-indigo-300"
+                  >
+                    {locality}
+                    <button
+                      type="button"
+                      onClick={() => removePlanLocality(locality)}
+                      className="text-indigo-500 hover:text-indigo-800 dark:hover:text-indigo-100"
+                      aria-label={`Quitar ${locality}`}
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="flex flex-wrap items-end gap-4">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Empezar a las</label>
+              <input
+                type="datetime-local"
+                value={planStartAtInput}
+                onChange={(e) => setPlanStartAtInput(e.target.value)}
+                className={`${inputClass} w-56`}
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Minutos entre corridas</label>
+              <input
+                type="number"
+                min={5}
+                value={planIntervalMinutes}
+                onChange={(e) => setPlanIntervalMinutes(Number(e.target.value))}
+                className={`${inputClass} w-32`}
+              />
+            </div>
+            <label className="flex items-center gap-2 pb-2 text-sm text-slate-700 dark:text-slate-300">
+              <input
+                type="checkbox"
+                checked={planIncludeApify}
+                onChange={(e) => setPlanIncludeApify(e.target.checked)}
+                className="rounded border-slate-300 dark:border-slate-700"
+              />
+              Incluir Apify además de OpenStreetMap
+            </label>
+          </div>
+
+          {planLocalities.length > 0 && (
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              {planOsmBatches} corrida(s) de OpenStreetMap (hasta 300 c/u)
+              {planIncludeApify && ` + ${planApifyBatches} corrida(s) de Apify (hasta 100 c/u)`} sobre{' '}
+              {planLocalities.length} localidad(es){planEndsAt && <> — repartidas hasta las {planEndsAt.toLocaleString('es-AR')}</>}.
+              Techo teórico ~{planEstimatedCeiling} contactos antes de duplicados.
+            </p>
+          )}
+
+          {dailyPlanMutation.isError && (
+            <p className="text-sm text-red-600 dark:text-red-400">
+              {dailyPlanMutation.error instanceof Error ? dailyPlanMutation.error.message : 'No se pudo crear el plan diario.'}
+            </p>
+          )}
+
+          {planResult && (
+            <p className="text-sm text-emerald-600 dark:text-emerald-400">
+              Se programaron {planResult.automations} corrida(s) — techo teórico ~{planResult.estimatedCeiling} contactos.
+            </p>
+          )}
+
+          <button
+            type="submit"
+            disabled={dailyPlanMutation.isPending || planLocalities.length === 0 || !planStartAtInput}
+            className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-60"
+          >
+            {dailyPlanMutation.isPending ? 'Creando…' : 'Crear plan diario'}
+          </button>
+        </form>
       </div>
 
       {recordsQuery.isLoading && <p className="text-sm text-slate-500 dark:text-slate-400">Cargando resultados...</p>}

@@ -63,28 +63,41 @@ public class CampaignQueueBackgroundService(
 
         foreach (var campaign in runningCampaigns)
         {
-            // batchSize = MessagesPerMinute de la propia campaña: como este ciclo corre una vez
-            // por PollIntervalSeconds (60s por defecto), un lote por tick respeta el límite que
-            // ya existía en el modelo (Campaign.MessagesPerMinute) pero que nadie hacía cumplir.
-            var batchSize = Math.Max(1, campaign.MessagesPerMinute);
-
-            using var orgScope = CurrentUserService.UseOrganization(campaign.OrganizationId);
-            using var workScope = scopeFactory.CreateScope();
-            var campaignService = workScope.ServiceProvider.GetRequiredService<ICampaignService>();
-
-            var result = await campaignService.ProcessQueueAsync(campaign.Id, batchSize, ct);
-
-            if (!result.Succeeded)
+            try
             {
-                logger.LogWarning(
-                    "[CampaignQueue] Campaña {CampaignId} ({Name}): no se pudo procesar: {Error}",
-                    campaign.Id, campaign.Name, result.Error);
+                // batchSize = MessagesPerMinute de la propia campaña: como este ciclo corre una vez
+                // por PollIntervalSeconds (60s por defecto), un lote por tick respeta el límite que
+                // ya existía en el modelo (Campaign.MessagesPerMinute) pero que nadie hacía cumplir.
+                var batchSize = Math.Max(1, campaign.MessagesPerMinute);
+
+                using var orgScope = CurrentUserService.UseOrganization(campaign.OrganizationId);
+                using var workScope = scopeFactory.CreateScope();
+                var campaignService = workScope.ServiceProvider.GetRequiredService<ICampaignService>();
+
+                var result = await campaignService.ProcessQueueAsync(campaign.Id, batchSize, ct);
+
+                if (!result.Succeeded)
+                {
+                    logger.LogWarning(
+                        "[CampaignQueue] Campaña {CampaignId} ({Name}): no se pudo procesar: {Error}",
+                        campaign.Id, campaign.Name, result.Error);
+                }
+                else if (result.Value!.Processed > 0)
+                {
+                    logger.LogInformation(
+                        "[CampaignQueue] Campaña {CampaignId} ({Name}): {Sent} enviados, {Failed} fallidos, {Suppressed} suprimidos de {Processed} procesados.",
+                        campaign.Id, campaign.Name, result.Value.Sent, result.Value.Failed, result.Value.Suppressed, result.Value.Processed);
+                }
             }
-            else if (result.Value!.Processed > 0)
+            catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                logger.LogInformation(
-                    "[CampaignQueue] Campaña {CampaignId} ({Name}): {Sent} enviados, {Failed} fallidos, {Suppressed} suprimidos de {Processed} procesados.",
-                    campaign.Id, campaign.Name, result.Value.Sent, result.Value.Failed, result.Value.Suppressed, result.Value.Processed);
+                // Un try/catch por campaña, no solo alrededor de todo el tick: sin esto, una
+                // excepción no controlada procesando la campaña N dejaba sin procesar las
+                // campañas N+1, N+2... de ese mismo ciclo hasta el próximo tick
+                // (auditoria.md, hallazgo Medio #8).
+                logger.LogError(ex,
+                    "[CampaignQueue] Campaña {CampaignId} ({Name}): error inesperado procesándola, se sigue con el resto.",
+                    campaign.Id, campaign.Name);
             }
         }
     }

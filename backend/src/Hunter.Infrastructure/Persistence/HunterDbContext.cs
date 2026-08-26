@@ -48,6 +48,7 @@ public class HunterDbContext : DbContext, IHunterDbContext
     public DbSet<Lead> Leads => Set<Lead>();
     public DbSet<LeadActivity> LeadActivities => Set<LeadActivity>();
     public DbSet<FollowUp> FollowUps => Set<FollowUp>();
+    public DbSet<LeadAssignmentCursor> LeadAssignmentCursors => Set<LeadAssignmentCursor>();
     public DbSet<Sale> Sales => Set<Sale>();
 
     public DbSet<Cost> Costs => Set<Cost>();
@@ -112,6 +113,18 @@ public class HunterDbContext : DbContext, IHunterDbContext
 
         modelBuilder.Entity<Lead>()
             .HasQueryFilter(l => l.OrganizationId == CurrentOrganizationId);
+
+        // FollowUp y LeadActivity no tenían OrganizationId ni filtro propio: un lookup directo
+        // por Id (ej. CompleteFollowUpAsync) no pasaba por el Lead dueño y dejaba completar/ver
+        // seguimientos de otra organización con solo adivinar el Id (auditoria.md, hallazgo #1).
+        modelBuilder.Entity<LeadActivity>()
+            .HasQueryFilter(a => a.OrganizationId == CurrentOrganizationId);
+
+        modelBuilder.Entity<FollowUp>()
+            .HasQueryFilter(f => f.OrganizationId == CurrentOrganizationId);
+
+        modelBuilder.Entity<LeadAssignmentCursor>()
+            .HasQueryFilter(c => c.OrganizationId == CurrentOrganizationId);
 
         modelBuilder.Entity<Sale>()
             .HasQueryFilter(s => s.OrganizationId == CurrentOrganizationId);
