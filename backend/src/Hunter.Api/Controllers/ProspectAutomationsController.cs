@@ -6,9 +6,10 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Hunter.Api.Controllers;
 
-// Automatizaciones de un solo disparo: "a esta hora, buscá en OSM con estos criterios, importá
-// todo lo válido y sumalo/arrancá esta campaña" — ver ScheduledProspectAutomationService.RunAsync
-// y ScheduledProspectAutomationBackgroundService (quien realmente las ejecuta).
+// Automatizaciones de un solo disparo: "a esta hora, buscá (en OSM o Apify) con estos criterios,
+// importá todo lo válido y sumalo/arrancá esta campaña" — ver
+// ScheduledProspectAutomationService.RunAsync y ScheduledProspectAutomationBackgroundService
+// (quien realmente las ejecuta).
 [ApiController]
 [Authorize]
 [Route("api/v1/prospect-automations")]

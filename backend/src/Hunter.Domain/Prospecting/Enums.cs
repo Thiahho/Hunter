@@ -91,6 +91,17 @@ public enum ProspectSourceType
     Other
 }
 
+// Fuente que usa una ScheduledProspectAutomation para buscar (ver ScheduledProspectAutomation.Source):
+// distinto de ProspectSourceType (que clasifica el origen de un ImportBatch ya importado) porque acá
+// solo hace falta distinguir entre las dos fuentes que ImportService sabe automatizar sin revisión
+// humana (OpenStreetMap/Nominatim, gratis; Apify/Google Maps, pago) — no las 8 categorías de
+// ProspectSourceType.
+public enum ProspectAutomationSource
+{
+    OpenStreetMap,
+    Apify
+}
+
 public enum ImportBatchStatus
 {
     Processing,

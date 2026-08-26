@@ -3,19 +3,22 @@ using Hunter.Domain.Common;
 namespace Hunter.Domain.Prospecting;
 
 // Automatización de un solo disparo (doc de la feature "programar búsqueda + envío"): a la hora
-// programada, el background service busca en OpenStreetMap con estos criterios, importa TODOS
-// los prospectos válidos sin revisión humana, los suma a CampaignId y arranca/continúa el envío
-// — ver ScheduledProspectAutomationService.RunAsync. Deliberadamente sin recurrencia (V1): cada
-// fila es una ejecución puntual, no un cron.
+// programada, el background service busca (en OpenStreetMap o Apify, según Source) con estos
+// criterios, importa TODOS los prospectos válidos sin revisión humana, los suma a CampaignId y
+// arranca/continúa el envío — ver ScheduledProspectAutomationService.RunAsync. Deliberadamente
+// sin recurrencia (V1): cada fila es una ejecución puntual, no un cron.
 public class ScheduledProspectAutomation : Entity
 {
     public int OrganizationId { get; set; }
     public int CreatedByUserId { get; set; }
 
-    // JSON de OpenStreetMapImportRequest (localidades, rubros, radio, máximo de resultados) —
-    // mismo patrón que ImportBatchRecord.RawData/NormalizedData: serializar el contrato entero
-    // en vez de columnas sueltas evita una migración nueva cada vez que ese contrato cambie.
+    // JSON de OpenStreetMapImportRequest o ApifyImportRequest según Source (localidades, rubros,
+    // radio/máximo de resultados) — mismo patrón que ImportBatchRecord.RawData/NormalizedData:
+    // serializar el contrato entero en vez de columnas sueltas evita una migración nueva cada vez
+    // que alguno de esos dos contratos cambie.
     public string SearchCriteriaJson { get; set; } = null!;
+
+    public ProspectAutomationSource Source { get; set; } = ProspectAutomationSource.OpenStreetMap;
 
     public int CampaignId { get; set; }
 

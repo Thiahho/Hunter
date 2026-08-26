@@ -38,8 +38,22 @@ public class ScheduledProspectAutomationService(
         if (localities.Count > MaxLocalities)
             return Result<ScheduledProspectAutomationDto>.Failure($"Máximo {MaxLocalities} localidades por automatización.");
 
-        if (request.RadiusKm < MinRadiusKm || request.RadiusKm > MaxRadiusKm)
+        // RadiusKm solo aplica a OpenStreetMap (geocodifica y busca alrededor); Apify busca
+        // "{rubro} en {localidad}, Argentina" directo contra Google Maps, sin radio.
+        if (request.Source == ProspectAutomationSource.OpenStreetMap
+            && (request.RadiusKm < MinRadiusKm || request.RadiusKm > MaxRadiusKm))
             return Result<ScheduledProspectAutomationDto>.Failure($"El radio debe estar entre {MinRadiusKm} y {MaxRadiusKm} km.");
+
+        var keywords = (request.Keywords ?? [])
+            .Select(k => k?.Trim())
+            .Where(k => !string.IsNullOrWhiteSpace(k))
+            .Select(k => k!)
+            .Distinct()
+            .ToList();
+
+        // Igual que ImportFromApifyAsync: Apify no tiene categorías cerradas, solo texto libre.
+        if (request.Source == ProspectAutomationSource.Apify && keywords.Count == 0)
+            return Result<ScheduledProspectAutomationDto>.Failure("Debe indicar al menos un rubro a buscar.");
 
         if (request.ScheduledAt <= DateTimeOffset.UtcNow)
             return Result<ScheduledProspectAutomationDto>.Failure("La fecha y hora programada debe ser en el futuro.");
@@ -50,13 +64,16 @@ public class ScheduledProspectAutomationService(
         if (!campaignIdResult.Succeeded)
             return Result<ScheduledProspectAutomationDto>.Failure(campaignIdResult.Error!);
 
-        var criteria = new OpenStreetMapImportRequest(localities, request.Categories, request.RadiusKm, request.MaxResults, request.Keywords);
+        var searchCriteriaJson = request.Source == ProspectAutomationSource.Apify
+            ? JsonSerializer.Serialize(new ApifyImportRequest(localities, keywords, request.MaxResults))
+            : JsonSerializer.Serialize(new OpenStreetMapImportRequest(localities, request.Categories, request.RadiusKm, request.MaxResults, request.Keywords));
 
         var automation = new ScheduledProspectAutomation
         {
             OrganizationId = organizationId,
             CreatedByUserId = currentUser.UserId!.Value,
-            SearchCriteriaJson = JsonSerializer.Serialize(criteria),
+            SearchCriteriaJson = searchCriteriaJson,
+            Source = request.Source,
             CampaignId = campaignIdResult.Value,
             ScheduledAt = request.ScheduledAt,
             Status = ScheduledAutomationStatus.Pending
@@ -111,10 +128,16 @@ public class ScheduledProspectAutomationService(
 
         try
         {
-            var criteria = JsonSerializer.Deserialize<OpenStreetMapImportRequest>(automation.SearchCriteriaJson)
-                ?? throw new InvalidOperationException("SearchCriteriaJson corrupto o vacío.");
+            var searchResult = automation.Source == ProspectAutomationSource.Apify
+                ? await importService.ImportFromApifyAsync(
+                    JsonSerializer.Deserialize<ApifyImportRequest>(automation.SearchCriteriaJson)
+                        ?? throw new InvalidOperationException("SearchCriteriaJson corrupto o vacío."),
+                    ct)
+                : await importService.ImportFromOpenStreetMapAsync(
+                    JsonSerializer.Deserialize<OpenStreetMapImportRequest>(automation.SearchCriteriaJson)
+                        ?? throw new InvalidOperationException("SearchCriteriaJson corrupto o vacío."),
+                    ct);
 
-            var searchResult = await importService.ImportFromOpenStreetMapAsync(criteria, ct);
             if (!searchResult.Succeeded)
             {
                 await FailAsync(automation, $"Búsqueda sin resultados: {searchResult.Error}", ct);
@@ -294,18 +317,40 @@ public class ScheduledProspectAutomationService(
 
     private async Task<ScheduledProspectAutomationDto> ToDtoAsync(ScheduledProspectAutomation automation, CancellationToken ct)
     {
-        var criteria = JsonSerializer.Deserialize<OpenStreetMapImportRequest>(automation.SearchCriteriaJson);
         var campaignName = await db.Campaigns
             .Where(c => c.Id == automation.CampaignId)
             .Select(c => c.Name)
             .FirstOrDefaultAsync(ct) ?? "(campaña eliminada)";
 
+        IReadOnlyCollection<string> resultLocalities;
+        IReadOnlyCollection<ProspectCategory>? resultCategories = null;
+        int resultRadiusKm = 0;
+        int resultMaxResults;
+        IReadOnlyCollection<string>? resultKeywords;
+
+        if (automation.Source == ProspectAutomationSource.Apify)
+        {
+            var criteria = JsonSerializer.Deserialize<ApifyImportRequest>(automation.SearchCriteriaJson);
+            resultLocalities = criteria?.Localities ?? [];
+            resultMaxResults = criteria?.MaxResults ?? 0;
+            resultKeywords = criteria?.Keywords;
+        }
+        else
+        {
+            var criteria = JsonSerializer.Deserialize<OpenStreetMapImportRequest>(automation.SearchCriteriaJson);
+            resultLocalities = criteria?.Localities ?? [];
+            resultCategories = criteria?.Categories;
+            resultRadiusKm = criteria?.RadiusKm ?? 0;
+            resultMaxResults = criteria?.MaxResults ?? 0;
+            resultKeywords = criteria?.Keywords;
+        }
+
         return new ScheduledProspectAutomationDto(
             automation.Id,
-            criteria?.Localities ?? [],
-            criteria?.Categories,
-            criteria?.RadiusKm ?? 0,
-            criteria?.MaxResults ?? 0,
+            resultLocalities,
+            resultCategories,
+            resultRadiusKm,
+            resultMaxResults,
             automation.CampaignId,
             campaignName,
             automation.ScheduledAt,
@@ -313,6 +358,7 @@ public class ScheduledProspectAutomationService(
             automation.RunAt,
             automation.ResultSummary,
             automation.CreatedAt,
-            criteria?.Keywords);
+            resultKeywords,
+            automation.Source);
     }
 }
