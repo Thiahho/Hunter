@@ -3,6 +3,7 @@ using Hunter.Application.Prospecting.Contracts;
 using Hunter.Shared;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using System.Linq;
 
 namespace Hunter.Api.Controllers;
 
@@ -11,6 +12,8 @@ namespace Hunter.Api.Controllers;
 [Route("api/v1/imports")]
 public class ImportsController(IImportService importService) : ControllerBase
 {
+    private static readonly string[] ExcelExtensions = [".xlsx", ".xls"];
+
     [HttpPost]
     [Consumes("multipart/form-data")]
     public async Task<IActionResult> Upload(IFormFile file, CancellationToken ct)
@@ -18,8 +21,13 @@ public class ImportsController(IImportService importService) : ControllerBase
         if (file.Length == 0)
             return BadRequest(ApiResponse<ImportPreviewDto>.Fail("El archivo está vacío."));
 
+        var extension = Path.GetExtension(file.FileName);
         await using var stream = file.OpenReadStream();
-        var result = await importService.ImportCsvAsync(stream, file.FileName, ct);
+
+        var result = ExcelExtensions.Contains(extension, StringComparer.OrdinalIgnoreCase)
+            ? await importService.ImportExcelAsync(stream, file.FileName, ct)
+            : await importService.ImportCsvAsync(stream, file.FileName, ct);
+
         if (!result.Succeeded)
             return BadRequest(ApiResponse<ImportPreviewDto>.Fail(result.Error!));
 

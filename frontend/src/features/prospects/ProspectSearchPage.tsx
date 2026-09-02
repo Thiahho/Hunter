@@ -6,6 +6,7 @@ import {
   cancelImport,
   confirmImport,
   getImportRecords,
+  importCsv,
   searchApify,
   searchOpenStreetMap,
   type ImportConfirmResultDto,
@@ -138,10 +139,11 @@ const automationStatusClass: Record<ScheduledAutomationStatus, string> = {
 const inputClass =
   'mt-1 w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-slate-900 dark:text-slate-100';
 
-type SearchSource = 'osm' | 'apify';
+type SearchSource = 'osm' | 'apify' | 'csv';
 
 export function ProspectSearchPage() {
   const [source, setSource] = useState<SearchSource>('osm');
+  const [csvFile, setCsvFile] = useState<File | null>(null);
   const [selectedCategories, setSelectedCategories] = useState<ProspectCategory[]>([]);
   const [keywords, setKeywords] = useState<string[]>([]);
   const [categoryInput, setCategoryInput] = useState('');
@@ -178,7 +180,12 @@ export function ProspectSearchPage() {
     onSuccess: onSearchSuccess,
   });
 
-  const activeMutation = source === 'osm' ? searchMutation : apifyMutation;
+  const csvMutation = useMutation({
+    mutationFn: importCsv,
+    onSuccess: onSearchSuccess,
+  });
+
+  const activeMutation = source === 'osm' ? searchMutation : source === 'apify' ? apifyMutation : csvMutation;
 
   // Overpass (el servidor público de OSM) puede tardar bastante bajo carga (ver
   // OpenStreetMapClient.PostWithRetryAsync — reintenta con backoff en 429/504), así que un
@@ -495,10 +502,7 @@ export function ProspectSearchPage() {
         </p>
       )}
 
-      <form
-        onSubmit={handleSubmit}
-        className="space-y-4 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5"
-      >
+      <div className="space-y-4 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5">
         <div>
           <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Fuente</label>
           <div className="mt-1 flex gap-2">
@@ -524,14 +528,67 @@ export function ProspectSearchPage() {
             >
               Google Maps (Apify)
             </button>
+            <button
+              type="button"
+              onClick={() => setSource('csv')}
+              className={`rounded-md border px-3 py-2 text-sm font-medium ${
+                source === 'csv'
+                  ? 'border-indigo-600 bg-indigo-50 text-indigo-700 dark:border-indigo-500 dark:bg-indigo-500/10 dark:text-indigo-300'
+                  : 'border-slate-300 text-slate-600 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800'
+              }`}
+            >
+              Importar CSV
+            </button>
           </div>
           <p className="mt-1 text-xs text-slate-400">
-            {source === 'osm'
-              ? 'Gratis. "Casa de repuestos" busca por tag exacto de OpenStreetMap; "Mayorista" busca por coincidencia de nombre, así que puede no encontrar el negocio si no está bien cargado en OSM.'
-              : 'Servicio pago (Apify, ~USD 1.50 cada 1000 resultados). Busca directo en Google Maps, igual que buscarlo a mano — más cobertura para el rubro de mayoristas.'}
+            {source === 'osm' &&
+              'Gratis. "Casa de repuestos" busca por tag exacto de OpenStreetMap; "Mayorista" busca por coincidencia de nombre, así que puede no encontrar el negocio si no está bien cargado en OSM.'}
+            {source === 'apify' &&
+              'Servicio pago (Apify, ~USD 1.50 cada 1000 resultados). Busca directo en Google Maps, igual que buscarlo a mano — más cobertura para el rubro de mayoristas.'}
+            {source === 'csv' && 'Subí un archivo .csv o .xlsx con prospectos ya armado (por ejemplo, adaptado desde el Excel que se sincroniza a Drive).'}
           </p>
         </div>
 
+        {source === 'csv' ? (
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (csvFile) csvMutation.mutate(csvFile);
+            }}
+            className="space-y-3"
+          >
+            <div>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Archivo CSV o Excel</label>
+              <input
+                type="file"
+                accept=".csv,text/csv,.xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
+                onChange={(e) => setCsvFile(e.target.files?.[0] ?? null)}
+                className="mt-1 block w-full text-sm text-slate-600 dark:text-slate-300 file:mr-3 file:rounded-md file:border-0 file:bg-indigo-50 dark:file:bg-indigo-500/10 file:px-3 file:py-2 file:text-sm file:font-medium file:text-indigo-700 dark:file:text-indigo-300 hover:file:bg-indigo-100"
+              />
+              <p className="mt-1 text-xs text-slate-400">
+                Acepta .csv o .xlsx. Encabezados esperados (exactos, en la primera fila): <code>business_name</code>{' '}
+                (obligatoria) y opcionalmente <code>phone</code>, <code>whatsapp</code>, <code>email</code>,{' '}
+                <code>address</code>, <code>city</code>, <code>province</code>, <code>category</code>. Cada fila
+                necesita al menos un contacto (phone, whatsapp o email).
+              </p>
+            </div>
+
+            {csvMutation.isError && (
+              <p className="text-sm text-red-600 dark:text-red-400">
+                {csvMutation.error instanceof Error ? csvMutation.error.message : 'No se pudo importar el archivo CSV.'}
+              </p>
+            )}
+
+            <button
+              type="submit"
+              disabled={csvMutation.isPending || !csvFile}
+              className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-60"
+            >
+              {csvMutation.isPending ? 'Subiendo…' : 'Subir y previsualizar'}
+            </button>
+          </form>
+        ) : (
+          <form onSubmit={handleSubmit} className="space-y-4">
         <div>
           <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Rubro</label>
           <div className="mt-1 flex flex-wrap gap-2">
@@ -770,8 +827,12 @@ export function ProspectSearchPage() {
             </p>
           )}
         </div>
-      </form>
+          </form>
+        )}
+      </div>
 
+      {source !== 'csv' && (
+      <>
       <div className="space-y-4 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5">
         <div>
           <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Programar automatización</h3>
@@ -1030,6 +1091,8 @@ export function ProspectSearchPage() {
           </button>
         </form>
       </div>
+      </>
+      )}
 
       {recordsQuery.isLoading && <p className="text-sm text-slate-500 dark:text-slate-400">Cargando resultados...</p>}
 

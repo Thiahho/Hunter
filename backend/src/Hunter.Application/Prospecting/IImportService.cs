@@ -6,6 +6,7 @@ namespace Hunter.Application.Prospecting;
 public interface IImportService
 {
     Task<Result<ImportPreviewDto>> ImportCsvAsync(Stream csvStream, string fileName, CancellationToken ct = default);
+    Task<Result<ImportPreviewDto>> ImportExcelAsync(Stream excelStream, string fileName, CancellationToken ct = default);
     Task<Result<ImportPreviewDto>> ImportFromGooglePlacesAsync(GooglePlacesImportRequest request, CancellationToken ct = default);
     Task<Result<ImportPreviewDto>> ImportFromOpenStreetMapAsync(OpenStreetMapImportRequest request, CancellationToken ct = default);
     Task<Result<ImportPreviewDto>> ImportFromApifyAsync(ApifyImportRequest request, CancellationToken ct = default);

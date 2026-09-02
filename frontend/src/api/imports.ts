@@ -39,6 +39,18 @@ export interface ImportConfirmResultDto {
   created: number;
 }
 
+export async function importCsv(file: File): Promise<ImportPreviewDto> {
+  const formData = new FormData();
+  formData.append('file', file);
+  const response = await apiClient.post<ApiResponse<ImportPreviewDto>>('/imports', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+  if (!response.data.success || !response.data.data) {
+    throw new Error(response.data.message ?? 'No se pudo importar el archivo CSV.');
+  }
+  return response.data.data;
+}
+
 export async function searchOpenStreetMap(request: OpenStreetMapImportRequest): Promise<ImportPreviewDto> {
   const response = await apiClient.post<ApiResponse<ImportPreviewDto>>('/imports/openstreetmap', request);
   if (!response.data.success || !response.data.data) {

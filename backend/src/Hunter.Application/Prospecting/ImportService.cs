@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.Json;
+using ClosedXML.Excel;
 using CsvHelper;
 using CsvHelper.Configuration;
 using Hunter.Application.Common;
@@ -34,6 +35,74 @@ public class ImportService(
         using (var csv = new CsvReader(reader, config))
         {
             rows = csv.GetRecords<ProspectCsvRow>().ToList();
+        }
+
+        var batch = await BuildBatchAsync(rows, fileName, ProspectSourceType.CsvImport, organizationId, ct);
+
+        db.ImportBatches.Add(batch);
+        await db.SaveChangesAsync(ct);
+
+        return Result<ImportPreviewDto>.Success(ToPreviewDto(batch));
+    }
+
+    // Mismo destino que ImportCsvAsync (BuildBatchAsync con el mismo set de columnas: business_name,
+    // phone, whatsapp, email, address, city, province, category, source), solo que leído de un
+    // .xlsx en vez de un .csv — para no obligar a convertir a mano el Excel que ya se sincroniza a
+    // Drive (ver ProspectDriveSyncService) antes de poder importarlo a otro entorno.
+    public async Task<Result<ImportPreviewDto>> ImportExcelAsync(Stream excelStream, string fileName, CancellationToken ct = default)
+    {
+        var organizationId = currentUser.OrganizationId!.Value;
+
+        List<ProspectCsvRow> rows;
+        try
+        {
+            using var workbook = new XLWorkbook(excelStream);
+            var sheet = workbook.Worksheets.First();
+
+            var lastColumn = sheet.LastColumnUsed()?.ColumnNumber() ?? 0;
+            var headerRow = sheet.Row(1);
+            var columnMap = new Dictionary<int, string>();
+            for (var col = 1; col <= lastColumn; col++)
+            {
+                var header = headerRow.Cell(col).GetString().Trim().ToLowerInvariant();
+                if (!string.IsNullOrEmpty(header))
+                    columnMap[col] = header;
+            }
+
+            rows = [];
+            var lastRow = sheet.LastRowUsed()?.RowNumber() ?? 1;
+            for (var rowNum = 2; rowNum <= lastRow; rowNum++)
+            {
+                var xlRow = sheet.Row(rowNum);
+                if (xlRow.IsEmpty())
+                    continue;
+
+                var row = new ProspectCsvRow();
+                foreach (var (col, header) in columnMap)
+                {
+                    var value = xlRow.Cell(col).GetString().Trim();
+                    if (string.IsNullOrEmpty(value))
+                        continue;
+
+                    switch (header)
+                    {
+                        case "business_name": row.business_name = value; break;
+                        case "phone": row.phone = value; break;
+                        case "whatsapp": row.whatsapp = value; break;
+                        case "email": row.email = value; break;
+                        case "address": row.address = value; break;
+                        case "city": row.city = value; break;
+                        case "province": row.province = value; break;
+                        case "category": row.category = value; break;
+                        case "source": row.source = value; break;
+                    }
+                }
+                rows.Add(row);
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            return Result<ImportPreviewDto>.Failure($"No se pudo leer el archivo Excel: {ex.Message}");
         }
 
         var batch = await BuildBatchAsync(rows, fileName, ProspectSourceType.CsvImport, organizationId, ct);
