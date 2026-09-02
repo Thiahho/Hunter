@@ -37,9 +37,3 @@ public enum ScheduledAutomationStatus
     Failed,
     Cancelled
 }
-
-public enum ProspectAutomationSource
-{
-    OpenStreetMap,
-    Apify
-}
