@@ -12,5 +12,8 @@ public sealed class ProspectCsvRow
     public string? city { get; set; }
     public string? province { get; set; }
     public string? category { get; set; }
+    // Rubro en texto libre de fuentes externas (categoryName de Google Maps vía Apify). No es
+    // una columna esperada del CSV: ahí "category" ya acepta texto libre (ver ProspectCategoryNames).
+    public string? category_name { get; set; }
     public string? source { get; set; }
 }

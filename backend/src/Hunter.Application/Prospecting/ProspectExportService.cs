@@ -71,7 +71,7 @@ public class ProspectExportService(IHunterDbContext db) : IProspectExportService
 
         var headers = new List<string>
         {
-            "Negocio", "Contacto", "Categoría", "Ciudad", "Provincia", "Dirección", "Teléfono", "Estado", "Agregado", "Maps",
+            "Negocio", "Contacto", "Rubro", "Ciudad", "Provincia", "Dirección", "Teléfono", "Estado", "Agregado", "Maps",
             "WhatsApp — Mensaje predeterminado", "WhatsApp — Link"
         };
         foreach (var template in templates)
@@ -92,7 +92,7 @@ public class ProspectExportService(IHunterDbContext db) : IProspectExportService
 
             sheet.Cell(row, col++).Value = prospect.BusinessName;
             sheet.Cell(row, col++).Value = prospect.ContactName ?? string.Empty;
-            sheet.Cell(row, col++).Value = prospect.Category.ToString();
+            sheet.Cell(row, col++).Value = ProspectCategoryNames.DisplayName(prospect.Category, prospect.CategoryName);
             sheet.Cell(row, col++).Value = prospect.City ?? string.Empty;
             sheet.Cell(row, col++).Value = prospect.Province ?? string.Empty;
             sheet.Cell(row, col++).Value = prospect.Address ?? string.Empty;

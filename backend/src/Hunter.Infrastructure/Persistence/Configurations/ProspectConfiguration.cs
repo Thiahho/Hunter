@@ -16,6 +16,7 @@ public class ProspectConfiguration : IEntityTypeConfiguration<Prospect>
         builder.Property(x => x.ContactName).HasMaxLength(200);
 
         builder.Property(x => x.Category).HasConversion<string>().HasMaxLength(30);
+        builder.Property(x => x.CategoryName).HasMaxLength(150);
         builder.Property(x => x.BusinessSize).HasConversion<string>().HasMaxLength(20);
         builder.Property(x => x.RecurrencePotential).HasConversion<string>().HasMaxLength(20);
         builder.Property(x => x.DistanceCategory).HasConversion<string>().HasMaxLength(20);

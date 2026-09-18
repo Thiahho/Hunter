@@ -30,10 +30,13 @@ public class ApifyGoogleMapsClient(
         if (localities.Count == 0 || keywords.Count == 0)
             return [];
 
-        var searchStrings = new List<string>();
+        // searchString → rubro que la generó: cada item del dataset trae el searchString que lo
+        // encontró, y así se sabe qué rubro seleccionado corresponde a cada resultado.
+        var keywordBySearchString = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         foreach (var locality in localities)
             foreach (var keyword in keywords)
-                searchStrings.Add($"{keyword} en {locality}, Argentina");
+                keywordBySearchString[$"{keyword} en {locality}, Argentina"] = keyword;
+        var searchStrings = keywordBySearchString.Keys.ToList();
 
         var clampedMax = Math.Clamp(criteria.MaxResults, 1, MaxResultsCap);
         var perSearchCap = Math.Clamp((int)Math.Ceiling(clampedMax / (double)searchStrings.Count), 1, clampedMax);
@@ -79,7 +82,7 @@ public class ApifyGoogleMapsClient(
             return [];
 
         return items
-            .Select(MapItem)
+            .Select(item => MapItem(item, keywordBySearchString, keywords))
             .Where(r => r is not null)
             .Select(r => r!)
             .DistinctBy(r => r.PlaceId)
@@ -87,10 +90,21 @@ public class ApifyGoogleMapsClient(
             .ToList();
     }
 
-    private static ApifyPlaceResult? MapItem(ApifyDatasetItem item)
+    private static ApifyPlaceResult? MapItem(
+        ApifyDatasetItem item, IReadOnlyDictionary<string, string> keywordBySearchString, IReadOnlyList<string> keywords)
     {
         if (string.IsNullOrWhiteSpace(item.Title))
             return null;
+
+        // Si Apify no devuelve el searchString (o viene alterado) y hubo un único rubro, igual se
+        // sabe cuál fue.
+        var searchKeyword = item.SearchString is not null && keywordBySearchString.TryGetValue(item.SearchString.Trim(), out var kw)
+            ? kw
+            : keywords.Count == 1 ? keywords[0] : null;
+
+        var categoryName = string.IsNullOrWhiteSpace(item.CategoryName)
+            ? item.Categories?.FirstOrDefault(c => !string.IsNullOrWhiteSpace(c))
+            : item.CategoryName;
 
         return new ApifyPlaceResult(
             item.PlaceId ?? item.Title,
@@ -98,7 +112,9 @@ public class ApifyGoogleMapsClient(
             item.Address,
             item.City,
             item.State,
-            item.Phone ?? item.PhoneUnformatted);
+            item.Phone ?? item.PhoneUnformatted,
+            categoryName?.Trim(),
+            searchKeyword);
     }
 
     private class ApifyDatasetItem
@@ -123,5 +139,14 @@ public class ApifyGoogleMapsClient(
 
         [JsonPropertyName("state")]
         public string? State { get; set; }
+
+        [JsonPropertyName("categoryName")]
+        public string? CategoryName { get; set; }
+
+        [JsonPropertyName("categories")]
+        public List<string>? Categories { get; set; }
+
+        [JsonPropertyName("searchString")]
+        public string? SearchString { get; set; }
     }
 }

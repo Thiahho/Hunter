@@ -17,4 +17,5 @@ public record ProspectListItemDto(
     string? PrimaryContactValue,
     DateTimeOffset CreatedAt,
     DateTimeOffset? LastViewedAt,
-    DateTimeOffset? LastMessageAt);
+    DateTimeOffset? LastMessageAt,
+    string? CategoryName = null);

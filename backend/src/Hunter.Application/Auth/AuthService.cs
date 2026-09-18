@@ -59,12 +59,20 @@ public class AuthService(
     {
         var email = request.Email.Trim().ToLowerInvariant();
 
-        var user = await db.Users
+        // El email es único por organización, no global (ver UserConfiguration): el mismo correo
+        // puede tener usuario en más de una organización (ej. una de prueba creada con Register y
+        // la real a la que después le dieron acceso). Antes se tomaba el primero sin orden, y
+        // Postgres devolvía el más viejo — la organización de prueba. Ahora se prueba la
+        // contraseña contra cada uno y, si coincide en varios, gana el acceso más reciente.
+        var candidates = await db.Users
             .IgnoreQueryFilters()
             .Include(u => u.UserRoles).ThenInclude(ur => ur.Role)
-            .FirstOrDefaultAsync(u => u.Email == email, ct);
+            .Where(u => u.Email == email && u.IsActive)
+            .OrderByDescending(u => u.Id)
+            .ToListAsync(ct);
 
-        if (user is null || !user.IsActive || !passwordHasher.Verify(user, user.PasswordHash, request.Password))
+        var user = candidates.FirstOrDefault(u => passwordHasher.Verify(u, u.PasswordHash, request.Password));
+        if (user is null)
             return Result<AuthResult>.Failure("Credenciales inválidas.");
 
         var roles = user.UserRoles.Select(ur => ur.Role.Name).ToList();

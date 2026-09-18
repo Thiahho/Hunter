@@ -93,7 +93,8 @@ public class ImportService(
                         case "address": row.address = value; break;
                         case "city": row.city = value; break;
                         case "province": row.province = value; break;
-                        case "category": row.category = value; break;
+                        // "categoría"/"rubro": encabezados del Excel que arma ProspectExportService.
+                        case "category" or "categoría" or "categoria" or "rubro": row.category = value; break;
                         case "source": row.source = value; break;
                     }
                 }
@@ -214,7 +215,10 @@ public class ImportService(
             address = p.Address,
             city = p.City,
             province = p.Province,
-            category = p.Category.ToString(),
+            // Los resultados por rubro libre (ej. "Mayorista") llegan sin tag conocido: con un solo
+            // rubro libre pedido, ese es el rubro del resultado.
+            category = p.Category == ProspectCategory.Unknown && keywords.Count == 1 ? keywords[0] : p.Category.ToString(),
+            category_name = p.Category == ProspectCategory.Unknown && keywords.Count == 1 ? keywords[0] : null,
             source = "openstreetmap"
         }).ToList();
 
@@ -276,6 +280,11 @@ public class ImportService(
             address = p.Address,
             city = p.City,
             province = p.Province,
+            // El enum sale primero del rubro seleccionado (ej. "Mayorista…" → Distributor, aunque
+            // Google lo liste como "Tienda de repuestos"); el texto guardado prioriza la categoría
+            // que devuelve Google Maps y cae al rubro seleccionado si no vino.
+            category = p.SearchKeyword ?? p.CategoryName,
+            category_name = p.CategoryName ?? p.SearchKeyword,
             source = "apify"
         }).ToList();
 
@@ -329,13 +338,14 @@ public class ImportService(
             var whatsapp = normalized.Contacts.FirstOrDefault(c => c.Channel == ProspectContactChannel.Whatsapp)?.Value;
 
             return new ImportRecordDto(
-                record.Id, record.RowNumber, record.Status.ToString(), normalized.BusinessName, normalized.Category.ToString(),
+                record.Id, record.RowNumber, record.Status.ToString(), normalized.BusinessName,
+                ProspectCategoryNames.DisplayName(normalized.Category, normalized.CategoryName),
                 phone, whatsapp, normalized.Address, normalized.City, normalized.Province, record.ErrorMessage);
         }
 
         var raw = JsonSerializer.Deserialize<ProspectCsvRow>(record.RawData)!;
         return new ImportRecordDto(
-            record.Id, record.RowNumber, record.Status.ToString(), raw.business_name, raw.category,
+            record.Id, record.RowNumber, record.Status.ToString(), raw.business_name, raw.category_name ?? raw.category,
             raw.phone, raw.whatsapp, raw.address, raw.city, raw.province, record.ErrorMessage);
     }
 
@@ -374,6 +384,7 @@ public class ImportService(
                 OrganizationId = batch.OrganizationId,
                 BusinessName = normalized.BusinessName,
                 Category = normalized.Category,
+                CategoryName = normalized.CategoryName,
                 Address = normalized.Address,
                 City = normalized.City,
                 Province = normalized.Province
@@ -518,9 +529,16 @@ public class ImportService(
 
         contacts[0] = contacts[0] with { IsPrimary = true };
 
+        var (category, categoryName) = ResolveCategory(row);
+
         var duplicateId = await duplicateFinder.FindDuplicateProspectIdAsync(organizationId, contacts, businessName, row.city, ct);
         if (duplicateId is not null)
         {
+            // Prospectos importados antes de que se guardara el rubro: volver a encontrarlos en
+            // una búsqueda les completa el rubro faltante (se persiste junto con el batch).
+            await FillMissingCategoryAsync(duplicateId.Value, category, categoryName, ct);
+
+
             return new ImportBatchRecord
             {
                 ImportBatchId = batch.Id,
@@ -533,11 +551,8 @@ public class ImportService(
             };
         }
 
-        var category = Enum.TryParse<ProspectCategory>(row.category, ignoreCase: true, out var parsedCategory)
-            ? parsedCategory
-            : ProspectCategory.Unknown;
-
-        var normalized = new NormalizedRow(businessName, category, row.address?.Trim(), row.city?.Trim(), row.province?.Trim(), contacts);
+        var normalized = new NormalizedRow(
+            businessName, category, row.address?.Trim(), row.city?.Trim(), row.province?.Trim(), contacts, categoryName);
 
         return new ImportBatchRecord
         {
@@ -553,5 +568,50 @@ public class ImportService(
     private static ImportPreviewDto ToPreviewDto(ImportBatch batch) => new(
         batch.Id, batch.Status.ToString(), batch.TotalRecords, batch.ValidRecords, batch.DuplicateRecords, batch.InvalidRecords);
 
-    private sealed record NormalizedRow(string BusinessName, ProspectCategory Category, string? Address, string? City, string? Province, List<ContactInput> Contacts);
+    private const int MaxCategoryNameLength = 150;
+
+    // category: rubro seleccionado / columna del CSV (acepta el nombre del enum, "Casa de
+    // repuestos" o texto libre). category_name: texto libre de la fuente (Apify). El enum se
+    // deduce de category primero; el texto guardado es category_name o, si no hay, el category
+    // libre; si es literalmente el nombre del enum (o no hay), el nombre en español del enum.
+    private static (ProspectCategory Category, string? CategoryName) ResolveCategory(ProspectCsvRow row)
+    {
+        var category = ProspectCategoryNames.Resolve(row.category);
+        if (category == ProspectCategory.Unknown)
+            category = ProspectCategoryNames.Resolve(row.category_name);
+
+        var name = row.category_name?.Trim();
+        if (string.IsNullOrEmpty(name))
+        {
+            var raw = row.category?.Trim();
+            name = string.IsNullOrEmpty(raw) || Enum.TryParse<ProspectCategory>(raw, ignoreCase: true, out _)
+                ? ProspectCategoryNames.StoredName(category)
+                : raw;
+        }
+
+        if (name is { Length: > MaxCategoryNameLength })
+            name = name[..MaxCategoryNameLength];
+
+        return (category, name);
+    }
+
+    private async Task FillMissingCategoryAsync(int prospectId, ProspectCategory category, string? categoryName, CancellationToken ct)
+    {
+        if (category == ProspectCategory.Unknown && categoryName is null)
+            return;
+
+        var prospect = await db.Prospects.FirstOrDefaultAsync(p => p.Id == prospectId, ct);
+        if (prospect is null)
+            return;
+
+        if (prospect.Category == ProspectCategory.Unknown && category != ProspectCategory.Unknown)
+            prospect.Category = category;
+        if (string.IsNullOrWhiteSpace(prospect.CategoryName) && categoryName is not null)
+            prospect.CategoryName = categoryName;
+    }
+
+    // CategoryName al final y opcional: los NormalizedData ya guardados en batches viejos no lo tienen.
+    private sealed record NormalizedRow(
+        string BusinessName, ProspectCategory Category, string? Address, string? City, string? Province,
+        List<ContactInput> Contacts, string? CategoryName = null);
 }

@@ -33,4 +33,5 @@ public record ProspectDto(
     DateTimeOffset? LastViewedAt,
     IReadOnlyCollection<ProspectContactDto> Contacts,
     IReadOnlyCollection<ProspectSourceDto> Sources,
-    IReadOnlyCollection<string> Tags);
+    IReadOnlyCollection<string> Tags,
+    string? CategoryName = null);

@@ -10,6 +10,12 @@ public class Prospect : Entity
     public string? ContactName { get; set; }
 
     public ProspectCategory Category { get; set; } = ProspectCategory.Unknown;
+
+    // Rubro tal cual vino de la fuente (categoryName de Google Maps vía Apify, rubro seleccionado
+    // en la búsqueda o columna "category" del CSV/Excel). Category es el enum cerrado deducido de
+    // este texto (ver ProspectCategoryNames.Resolve); acá se conserva el detalle que el enum
+    // pierde (ej. "Distribuidora de frenos").
+    public string? CategoryName { get; set; }
     public BusinessSize BusinessSize { get; set; } = BusinessSize.Unknown;
     public RecurrencePotential RecurrencePotential { get; set; } = RecurrencePotential.Unknown;
     public DistanceCategory DistanceCategory { get; set; } = DistanceCategory.Unknown;

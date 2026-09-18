@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.RegularExpressions;
 using Hunter.Application.Common;
+using Hunter.Application.Prospecting;
 using Hunter.Domain.Prospecting;
 
 namespace Hunter.Application.Crm;
@@ -14,18 +15,6 @@ public static class LeadHandoffMessageBuilder
 {
     private const int MaxProspectMessageLength = 300;
     private static readonly Regex WhitespaceRun = new(@"[\r\n\t]+|[ ]{2,}", RegexOptions.Compiled);
-
-    private static readonly Dictionary<ProspectCategory, string> CategoryDisplayNames = new()
-    {
-        [ProspectCategory.Unknown] = "Sin clasificar",
-        [ProspectCategory.Distributor] = "Mayorista/Distribuidor",
-        [ProspectCategory.AutoPartsStore] = "Casa de repuestos",
-        [ProspectCategory.Workshop] = "Taller",
-        [ProspectCategory.Lubricentro] = "Lubricentro",
-        [ProspectCategory.TireShop] = "Gomería",
-        [ProspectCategory.Reseller] = "Revendedor",
-        [ProspectCategory.Other] = "Otro"
-    };
 
     // Número fijo al que se deriva el prospecto para seguimiento centralizado, con los datos
     // del cliente pre-cargados en formato lista (ver BuildDispatchLink).
@@ -52,7 +41,7 @@ public static class LeadHandoffMessageBuilder
         if (!string.IsNullOrWhiteSpace(prospect.City))
             sb.AppendLine($"📍 {prospect.City}");
 
-        sb.AppendLine($"🏷 {DisplayName(prospect.Category)}");
+        sb.AppendLine($"🏷 {DisplayName(prospect)}");
 
         if (prospect.CommercialScore is not null)
             sb.AppendLine($"📊 Score: {prospect.CommercialScore}");
@@ -107,7 +96,7 @@ public static class LeadHandoffMessageBuilder
             $"Ubicación: {prospect.City ?? "-"}",
             $"Dirección: {prospect.Address ?? "-"}",
             $"Número: {prospectWhatsApp}",
-            $"Rubro: {DisplayName(prospect.Category)}",
+            $"Rubro: {DisplayName(prospect)}",
             $"Maps: {ProspectLinkBuilder.BuildMapsLink(prospect.BusinessName, prospect.Address, prospect.City)}"
         };
 
@@ -119,13 +108,13 @@ public static class LeadHandoffMessageBuilder
     [
         Sanitize(prospect.BusinessName),
         Sanitize(prospect.City ?? "-"),
-        Sanitize(DisplayName(prospect.Category)),
+        Sanitize(DisplayName(prospect)),
         prospect.CommercialScore?.ToString() ?? "-",
         Sanitize(Truncate(prospectMessage))
     ];
 
-    private static string DisplayName(ProspectCategory category) =>
-        CategoryDisplayNames.GetValueOrDefault(category, category.ToString());
+    private static string DisplayName(Prospect prospect) =>
+        ProspectCategoryNames.DisplayName(prospect.Category, prospect.CategoryName);
 
     private static string Truncate(string value)
     {

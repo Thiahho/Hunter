@@ -31,6 +31,7 @@ public class ProspectService(IHunterDbContext db, ICurrentUserService currentUse
             BusinessName = request.BusinessName.Trim(),
             ContactName = request.ContactName?.Trim(),
             Category = request.Category,
+            CategoryName = ProspectCategoryNames.StoredName(request.Category),
             BusinessSize = request.BusinessSize,
             RecurrencePotential = request.RecurrencePotential,
             Address = request.Address?.Trim(),
@@ -81,6 +82,10 @@ public class ProspectService(IHunterDbContext db, ICurrentUserService currentUse
 
         prospect.BusinessName = request.BusinessName.Trim();
         prospect.ContactName = request.ContactName?.Trim();
+        // Si se cambia el rubro a mano, el texto importado (CategoryName) deja de corresponder:
+        // se reemplaza por el nombre en español del rubro elegido.
+        if (prospect.Category != request.Category)
+            prospect.CategoryName = ProspectCategoryNames.StoredName(request.Category);
         prospect.Category = request.Category;
         prospect.BusinessSize = request.BusinessSize;
         prospect.RecurrencePotential = request.RecurrencePotential;
@@ -184,7 +189,8 @@ public class ProspectService(IHunterDbContext db, ICurrentUserService currentUse
                     ?? p.Contacts.Select(c => c.Value).FirstOrDefault(),
                 p.CreatedAt,
                 p.LastViewedAt,
-                db.MessageResponses.Where(r => r.ProspectId == p.Id).Max(r => (DateTimeOffset?)r.ReceivedAt)))
+                db.MessageResponses.Where(r => r.ProspectId == p.Id).Max(r => (DateTimeOffset?)r.ReceivedAt),
+                p.CategoryName))
             .ToListAsync(ct);
 
         return new PagedResult<ProspectListItemDto>
@@ -373,7 +379,8 @@ public class ProspectService(IHunterDbContext db, ICurrentUserService currentUse
                 p.LastViewedAt,
                 p.Contacts.Select(c => new ProspectContactDto(c.Id, c.Channel, c.Value, c.IsPrimary, c.IsVerified)).ToList(),
                 p.Sources.Select(s => new ProspectSourceDto(s.Id, s.SourceType, s.ExternalId, s.SourceUrl, s.CollectedAt)).ToList(),
-                p.ProspectTags.Select(pt => pt.Tag.Name).ToList()))
+                p.ProspectTags.Select(pt => pt.Tag.Name).ToList(),
+                p.CategoryName))
             .FirstOrDefaultAsync(ct);
     }
 }

@@ -43,6 +43,7 @@ export interface ProspectListItem {
   id: number;
   businessName: string;
   category: ProspectCategory;
+  categoryName: string | null;
   address: string | null;
   city: string | null;
   province: string | null;
@@ -78,6 +79,7 @@ export interface Prospect {
   businessName: string;
   contactName: string | null;
   category: ProspectCategory;
+  categoryName: string | null;
   businessSize: BusinessSize;
   recurrencePotential: RecurrencePotential;
   address: string | null;
