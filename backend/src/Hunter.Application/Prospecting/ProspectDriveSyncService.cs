@@ -53,6 +53,16 @@ public class ProspectDriveSyncService(
     private async Task<Result<ProspectDriveSyncResultDto>> UploadAndPersistAsync(byte[] content, int prospectCount, CancellationToken ct)
     {
         var organizationId = currentUser.OrganizationId!.Value;
+
+        // Hay una sola carpeta de Drive y GoogleDriveClient reusa el archivo "Prospectos" por
+        // nombre: sin este control, cada organización (ej. una de prueba) sobreescribía el mismo
+        // archivo en cada tick y el Excel terminaba con los prospectos de la última que corría,
+        // mientras el estado de la organización real seguía diciendo "sincronizado".
+        var ownerId = await GetDriveFileOwnerOrganizationIdAsync(ct);
+        if (ownerId is not null && ownerId != organizationId)
+            return Result<ProspectDriveSyncResultDto>.Failure(
+                "El Excel compartido de Drive corresponde a otra organización; esta no se sincroniza para no pisarlo.");
+
         var existingFileId = await GetSettingAsync(organizationId, OrganizationSettingsKeys.GoogleDriveProspectsFileId, ct);
 
         var fileId = await googleDriveClient.UploadOrUpdateAsync(existingFileId, FileName, content, XlsxMimeType, ct);
@@ -87,6 +97,18 @@ public class ProspectDriveSyncService(
 
         return new ProspectDriveSyncResultDto(fileId, BuildDriveUrl(fileId), syncedAt ?? DateTimeOffset.MinValue, prospectCount);
     }
+
+    // Dueña del archivo compartido: la organización con más prospectos activos (la real, no una
+    // de prueba con un par de registros). null si todavía no hay prospectos en ninguna.
+    private async Task<int?> GetDriveFileOwnerOrganizationIdAsync(CancellationToken ct) =>
+        await db.Prospects
+            .IgnoreQueryFilters()
+            .Where(p => !p.IsDeleted)
+            .GroupBy(p => p.OrganizationId)
+            .OrderByDescending(g => g.Count())
+            .ThenBy(g => g.Key)
+            .Select(g => (int?)g.Key)
+            .FirstOrDefaultAsync(ct);
 
     private static string BuildDriveUrl(string fileId) => $"https://drive.google.com/file/d/{fileId}/view";
 
